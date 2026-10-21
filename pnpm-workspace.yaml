@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - apps/*
+
+# 允许执行安装脚本的依赖（pnpm 12: allowBuilds）
+allowBuilds:
+  esbuild: true
