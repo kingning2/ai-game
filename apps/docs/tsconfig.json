@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@agent-packages/shared": ["../../packages/shared/src/request"],
+      "@agent-packages/shared-ui": ["../../packages/shared-ui/src"]
+    }
+  },
+  "include": ["demos", "guide", ".vitepress/**/*.ts", ".vitepress/**/*.mts"],
+  "exclude": ["node_modules", ".vitepress/dist", ".vitepress/cache"]
+}

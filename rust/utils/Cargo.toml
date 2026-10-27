@@ -1,0 +1,11 @@
+[package]
+name = "utils"
+version = "0.1.0"
+edition = "2024"
+description = "应用整体日志文件"
+
+[dependencies]
+thiserror.workspace = true
+
+[lints]
+workspace = true

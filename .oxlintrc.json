@@ -1,0 +1,107 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // ── oxc 全家桶：显式列出全部插件（plugins 字段会覆盖默认集合）────────────
+  // 默认四件套：eslint / typescript / unicorn / oxc
+  // React 组件库：react（含 react-hooks、react-refresh）、react-perf、jsx-a11y
+  // 工程卫生：import、promise；文档站 Vue 组件：vue
+  "plugins": [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "react",
+    "react-perf",
+    "jsx-a11y",
+    "import",
+    "promise",
+    "vue"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "env": {
+    "es2022": true,
+    "browser": true
+  },
+  // ── type-aware linting（tsgolint / typescript-go 驱动）──────────────────
+  // 依赖 oxlint-tsgolint；monorepo 下需先 `pnpm -r build` 生成 .d.ts
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    // 项目是 jsx: react-jsx（automatic runtime），无需 import React
+    "react/react-in-jsx-scope": "off",
+    // react-perf 的内联 props 微优化规则：对惯用 React 写法误报率过高，
+    // 性能优化以 AGENTS.md 动效规范（composite 属性）为准
+    "react-perf/jsx-no-new-function-as-prop": "off",
+    "react-perf/jsx-no-new-array-as-prop": "off",
+    "react-perf/jsx-no-new-object-as-prop": "off",
+    "react-perf/jsx-no-jsx-as-prop": "off",
+    // CSS / 样式副作用导入是有意为之
+    "import/no-unassigned-import": "off",
+    // a11y：以下为存量真实问题，先降为 warn 跟踪，不阻塞 CI；修复后可升回 error
+    "jsx-a11y/prefer-tag-over-role": "warn",
+    "jsx-a11y/aria-role": "warn",
+    "jsx-a11y/heading-has-content": "warn",
+    "jsx-a11y/no-autofocus": "warn",
+    "jsx-a11y/click-events-have-key-events": "warn",
+    "jsx-a11y/no-noninteractive-element-interactions": "warn",
+    "jsx-a11y/no-noninteractive-element-to-interactive-role": "warn",
+    "jsx-a11y/control-has-associated-label": "warn",
+    // 对齐 AGENTS.md：TS strict，禁止 as any 逃逸
+    "typescript/no-explicit-any": "error",
+    // React hooks 契约
+    "react/exhaustive-deps": "warn",
+    "react/rules-of-hooks": "error",
+    // type-aware 规则（仅在 type-aware 模式生效）
+    "typescript/await-thenable": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "warn",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/no-meaningless-void-operator": "warn",
+    "typescript/no-unsafe-argument": "warn",
+    "typescript/no-unsafe-assignment": "warn",
+    "typescript/no-unsafe-call": "warn",
+    "typescript/no-unsafe-member-access": "warn",
+    "typescript/no-unsafe-return": "warn",
+    "typescript/only-throw-error": "warn",
+    "typescript/no-base-to-string": "warn",
+    "typescript/unbound-method": "warn",
+    // React Compiler（oxc Rust 版）无法编译的语法：compiler 会静默跳过该组件，
+    // 用 lint 提示出来，避免 memoization 静默失效
+    "react/unsupported-syntax": "warn"
+  },
+  "overrides": [
+    {
+      // 无类型的 JS 脚本：no-unsafe-* 在没有类型信息的 .js/.mjs 上全是噪声
+      "files": ["**/*.{js,mjs,cjs}"],
+      "rules": {
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off"
+      }
+    },
+    {
+      // Node 脚本
+      "files": ["apps/desktop/scripts/**"],
+      "env": {
+        "node": true
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.vitepress/cache/**",
+    "**/target/**",
+    "binaries",
+    "binaries/**",
+    "tmp",
+    "tmp/**",
+    ".git/**"
+  ]
+}

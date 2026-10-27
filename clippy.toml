@@ -1,0 +1,2 @@
+# Clippy 配置（放仓库根，理由同 rustfmt.toml）
+msrv = "1.97.1"

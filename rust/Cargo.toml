@@ -1,0 +1,60 @@
+[workspace]
+resolver = "3"
+members = [
+  "server",
+  "tts",
+  "../apps/desktop/src-tauri",
+  "logging",
+  "utils",
+  "state",
+  "agent",
+  "tools",
+  "games/werewolf",
+  "memory",
+]
+
+# workspace 级 profile（成员里的 [profile.*] 会被 cargo 忽略）
+# 优化指引：https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[workspace.dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+axum = "0.8"
+tracing = "0.1"
+# 统一版本
+# - "net"：TcpListener；"macros"：#[tokio::main]/#[tokio::test]；"time"：超时/Elapsed
+# - "signal"：优雅关闭（Ctrl+C / 控制台关闭事件）
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time", "signal"] }
+# 接口文档自动生成（OpenAPI 3.x JSON，供 Apifox 导入）
+utoipa = "5"
+# 平台配置目录定位
+dirs = "6"
+
+# 内部 Workspace 包
+logging = { path = "logging" }
+utils = { path = "utils" }
+state = { path = "state" }
+agent = { path = "agent" }
+tools = { path = "tools" }
+werewolf = { path = "games/werewolf" }
+memory = { path = "memory" }
+tts = { path = "tts" }
+
+# 全 workspace 统一 lint 策略（各包 [lints] workspace = true 继承）
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# 后端统一走 tracing / eprintln，不直接 println!（GUI 壳的 stdout 无人可见）
+print_stdout = "warn"
+# 运行时零 panic 纪律：非测试代码禁止 unwrap / expect / panic!，
+# 可失败操作一律返回 Result 交给上层（统一通道见 utils::FallibleExt::wrap_err）
+# 测试代码在各 crate 根部用 #![cfg_attr(test, allow(...))] 豁免
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"

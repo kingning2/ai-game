@@ -1,0 +1,20 @@
+/*
+ * 文档站 Tailwind 入口：与 apps/web/src/index.css 同构
+ *
+ * 关键差异：VitePress base.css 的 reset（button { background-color: transparent; color: inherit }）
+ * 是未分层 CSS，会压过 @layer utilities。这里按 v4 官方 important 方案拆分引入，
+ * 让工具类带 !important 反压宿主 reset——demo 内组件样式完整生效。
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(utilities) important;
+
+/* 组件库令牌：调色板 + 语义令牌（明暗两套）+ 预设动画 */
+@import '../../../../packages/shared-ui/styles/index.css';
+
+/* 深色模式 class 策略，与组件库一致（VitePress 也是 .dark 挂 html） */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@source '../../../../packages/shared-ui/src';
+@source '../../demos';

@@ -1,0 +1,204 @@
+/*
+ * 预设动画 —— 约束来源：emil-design-eng / apple-design（.agents/skills）
+ *
+ * 规则：
+ * - 禁用 ease-in（入场/反馈一律 ease-out；屏上移动用强 ease-in-out；抽屉用 iOS 曲线）
+ * - 内置 CSS 缓动太弱，覆盖为强自定义曲线（下方覆盖 Tailwind 默认 --ease-out / --ease-in-out）
+ * - UI 动画 ≤ 300ms；入场从 scale(0.95) 起（现实里没有东西从 0 出现），配合透明度
+ * - fill-mode both：入场不闪烁、结束保持末帧
+ * - prefers-reduced-motion 时全部退化为瞬时（保留透明度反馈本身）
+ *
+ * @keyframes 写在 @theme 内部，只有用到对应 animate-* 工具类才会输出，不污染产物。
+ */
+
+@theme {
+  /* 强缓动（覆盖 Tailwind 内置弱曲线；同时生成 ease-* 工具类，可与任意 transition 搭配） */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 淡入淡出：遮罩、提示文字 */
+  --animate-fade-in: fade-in 0.2s var(--ease-out) both;
+  --animate-fade-out: fade-out 0.15s var(--ease-in-out) both;
+
+  /* 入场位移：卡片、列表项、下拉内容 */
+  --animate-fade-in-up: fade-in-up 0.25s var(--ease-out) both;
+  --animate-fade-in-down: fade-in-down 0.25s var(--ease-out) both;
+
+  /* 缩放：弹窗、Popover（从 0.95 起，不从 0） */
+  --animate-zoom-in: zoom-in 0.2s var(--ease-out) both;
+  --animate-zoom-out: zoom-out 0.15s var(--ease-in-out) both;
+
+  /* 滑入：抽屉、Toast、通知（iOS 抽屉曲线） */
+  --animate-slide-in-right: slide-in-right 0.3s var(--ease-drawer) both;
+  --animate-slide-in-left: slide-in-left 0.3s var(--ease-drawer) both;
+  --animate-slide-in-top: slide-in-top 0.3s var(--ease-drawer) both;
+  --animate-slide-in-bottom: slide-in-bottom 0.3s var(--ease-drawer) both;
+
+  /* 抖动：表单校验失败等错误反馈 */
+  --animate-shake: shake 0.3s var(--ease-in-out) both;
+
+  /* 入场升起（stagger 用）：页面分区逐个上浮，配合 animationDelay */
+  --animate-rise: rise 0.55s var(--ease-out) both;
+
+  /* 打字光标闪烁：硬切（steps 节奏）才是终端 / iOS 键盘光标的质感，不用淡入淡出 */
+  --animate-caret-blink: caret-blink 1.1s steps(1) infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-in-down {
+    from {
+      opacity: 0;
+      transform: translateY(-12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes zoom-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes zoom-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+
+  @keyframes slide-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-in-left {
+    from {
+      opacity: 0;
+      transform: translateX(-24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-in-top {
+    from {
+      opacity: 0;
+      transform: translateY(-24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-in-bottom {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes shake {
+    10%,
+    90% {
+      transform: translateX(-1px);
+    }
+    20%,
+    80% {
+      transform: translateX(2px);
+    }
+    30%,
+    50%,
+    70% {
+      transform: translateX(-4px);
+    }
+    40%,
+    60% {
+      transform: translateX(4px);
+    }
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes caret-blink {
+    0%,
+    55% {
+      opacity: 1;
+    }
+    56%,
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+/* 无障碍：偏好减弱动效时，预设动画退化为瞬时（透明度/颜色的状态变化仍即时生效）；
+   stagger 的 animationDelay 一并清零，否则内容会延迟可见 */
+@media (prefers-reduced-motion: reduce) {
+  [class*='animate-'] {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+  }
+}

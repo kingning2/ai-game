@@ -1,0 +1,31 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2024"
+description = "接口实现，总编排其他包"
+
+[dependencies]
+
+# 第三方依赖
+axum.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tower-http = { version = "0.6", features = ["cors", "catch-panic"] }
+utoipa.workspace = true
+
+# 内部依赖
+logging.workspace = true
+state.workspace = true
+agent.workspace = true
+werewolf.workspace = true
+memory.workspace = true
+tts.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true

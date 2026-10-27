@@ -1,0 +1,4 @@
+# rustfmt 配置（放仓库根：rustfmt 从被格式化文件向上查找，
+# 这样 rust/ workspace 与 apps/desktop/src-tauri 都能命中）
+edition = "2024"
+max_width = 100

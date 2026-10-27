@@ -3,21 +3,26 @@
   "version": "0.1.0",
   "description": "Shared React UI components",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./styles.css": "./styles/index.css",
+    "./styles/*": "./styles/*"
   },
   "files": [
-    "dist"
+    "dist",
+    "styles"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -29,6 +34,13 @@
     "@types/react-dom": "^19.2.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "tsup": "^8.5.1"
+    "tsdown": "^0.23.1"
+  },
+  "dependencies": {
+    "@agent-packages/shared": "workspace:*",
+    "@tanstack/react-form": "^1.33.5",
+    "@tanstack/react-table": "^9.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   }
 }

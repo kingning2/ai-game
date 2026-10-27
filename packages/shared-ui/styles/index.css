@@ -1,0 +1,11 @@
+/*
+ * @agent-packages/shared-ui 主题入口
+ *
+ * 消费方在自己的 Tailwind 入口 CSS 中引入：
+ *   @import 'tailwindcss';
+ *   @import '@agent-packages/shared-ui/styles.css';
+ * 令牌即注入 @theme，直接获得 bg-primary / text-muted-foreground / animate-fade-in-up 等工具类。
+ */
+@import './tokens.css';
+@import './animations.css';
+@import './components.css';

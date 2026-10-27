@@ -12,3 +12,11 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+node_modules/
+dist/
+.vitepress/cache/
+*.log
+
+# local experiments
+tmp/
+**/.vitepress/cache/

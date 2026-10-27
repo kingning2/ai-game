@@ -1,0 +1,207 @@
+/*
+ * 设计令牌 —— Apple Human Interface Guidelines 规范
+ *
+ * 依据 Apple「Colors / Materials / Typography」公开规格：
+ * - 系统色（systemBlue 等）：每个色相只有明 / 暗两个官方值，不做 50–950 阶梯。
+ *   需要更浅 / 更深时用透明度修饰符（bg-tint/10、text-label/60），这是 Apple 自己的做法。
+ * - 语义色：label 文字层级、background 背景层级、fill 填充层级、separator 分隔线，
+ *   组件只允许用语义名，明暗切换由 :root / .dark 的原始变量集中完成。
+ * - 语义层必须 @theme inline：工具类内联 var(--xxx)，.dark 覆盖原始变量后后代元素实时生效。
+ */
+
+/* ---------------- 系统色与语义色（随外观切换） ---------------- */
+
+@theme inline {
+  /* 系统色 12 色相（iOS 规格） */
+  --color-blue: var(--system-blue);
+  --color-brown: var(--system-brown);
+  --color-cyan: var(--system-cyan);
+  --color-green: var(--system-green);
+  --color-indigo: var(--system-indigo);
+  --color-mint: var(--system-mint);
+  --color-orange: var(--system-orange);
+  --color-pink: var(--system-pink);
+  --color-purple: var(--system-purple);
+  --color-red: var(--system-red);
+  --color-teal: var(--system-teal);
+  --color-yellow: var(--system-yellow);
+
+  /* 系统灰阶 systemGray ~ systemGray6 */
+  --color-gray: var(--system-gray);
+  --color-gray-2: var(--system-gray-2);
+  --color-gray-3: var(--system-gray-3);
+  --color-gray-4: var(--system-gray-4);
+  --color-gray-5: var(--system-gray-5);
+  --color-gray-6: var(--system-gray-6);
+
+  /* 文字层级（iOS 语义色 label 系列） */
+  --color-label: var(--label);
+  --color-secondary-label: var(--secondary-label);
+  --color-tertiary-label: var(--tertiary-label);
+  --color-quaternary-label: var(--quaternary-label);
+  --color-placeholder-text: var(--placeholder-text);
+
+  /* 背景层级（普通 / 分组列表） */
+  --color-background: var(--system-background);
+  --color-secondary-background: var(--secondary-system-background);
+  --color-tertiary-background: var(--tertiary-system-background);
+  --color-grouped-background: var(--system-grouped-background);
+  --color-secondary-grouped-background: var(--secondary-system-grouped-background);
+  --color-tertiary-grouped-background: var(--tertiary-system-grouped-background);
+
+  /* 填充层级（控件底色：按钮、输入框、胶囊） */
+  --color-fill: var(--system-fill);
+  --color-secondary-fill: var(--secondary-system-fill);
+  --color-tertiary-fill: var(--tertiary-system-fill);
+  --color-quaternary-fill: var(--quaternary-system-fill);
+
+  /* 分隔线（发丝线用半透明，跨背景都成立） */
+  --color-separator: var(--separator);
+  --color-opaque-separator: var(--opaque-separator);
+
+  /* 控件语义：应用强调色（换主色只改 :root/.dark 两处 --tint）与破坏性操作 */
+  --color-tint: var(--tint);
+  --color-destructive: var(--destructive);
+
+  /* 材质底色：配合 backdrop-blur-xl backdrop-saturate-150 做半透明浮动层 */
+  --color-material: var(--material);
+}
+
+/* ---------------- 静态令牌 ---------------- */
+
+@theme {
+  /* 字体：平台系统字体优先（SF Pro 自带光学尺寸与字距表），含中文回退 */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue',
+    'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* 阴影：iOS 原生界面靠分隔线与填充分层，web 卡片 / 浮层保留极轻投影 */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 10px 24px -6px rgb(0 0 0 / 0.1);
+}
+
+/* ---------------- 原始变量：浅色（默认） ---------------- */
+
+:root {
+  color-scheme: light;
+
+  /* 系统色（iOS Light） */
+  --system-blue: #007aff;
+  --system-brown: #a2845e;
+  --system-cyan: #32ade6;
+  --system-green: #34c759;
+  --system-indigo: #5856d6;
+  --system-mint: #00c7be;
+  --system-orange: #ff9500;
+  --system-pink: #ff2d55;
+  --system-purple: #af52de;
+  --system-red: #ff3b30;
+  --system-teal: #30b0c7;
+  --system-yellow: #ffcc00;
+
+  --system-gray: #8e8e93;
+  --system-gray-2: #aeaeb2;
+  --system-gray-3: #c7c7cc;
+  --system-gray-4: #d1d1d6;
+  --system-gray-5: #e5e5ea;
+  --system-gray-6: #f2f2f7;
+
+  /* 文字层级 */
+  --label: #000000;
+  --secondary-label: rgb(60 60 67 / 0.6);
+  --tertiary-label: rgb(60 60 67 / 0.3);
+  --quaternary-label: rgb(60 60 67 / 0.18);
+  --placeholder-text: rgb(60 60 67 / 0.3);
+
+  /* 背景层级 */
+  --system-background: #ffffff;
+  --secondary-system-background: #f2f2f7;
+  --tertiary-system-background: #ffffff;
+  --system-grouped-background: #f2f2f7;
+  --secondary-system-grouped-background: #ffffff;
+  --tertiary-system-grouped-background: #f2f2f7;
+
+  /* 填充层级 */
+  --system-fill: rgb(120 120 128 / 0.2);
+  --secondary-system-fill: rgb(120 120 128 / 0.16);
+  --tertiary-system-fill: rgb(118 118 128 / 0.12);
+  --quaternary-system-fill: rgb(116 116 128 / 0.08);
+
+  /* 分隔线 */
+  --separator: rgb(60 60 67 / 0.29);
+  --opaque-separator: #c6c6c8;
+
+  /* 控件语义（C 端 iOS 橙：活力 / 效率感，dark 用暗色变体） */
+  --tint: #ff9500;
+  --destructive: #ff3b30;
+
+  /* 材质（regular） */
+  --material: rgb(255 255 255 / 0.65);
+}
+
+/* ---------------- 原始变量：深色（.dark 挂在 <html> 上切换） ---------------- */
+
+.dark {
+  color-scheme: dark;
+
+  --system-blue: #0a84ff;
+  --system-brown: #ac8e68;
+  --system-cyan: #64d2ff;
+  --system-green: #30d158;
+  --system-indigo: #5e5ce6;
+  --system-mint: #63e6e2;
+  --system-orange: #ff9f0a;
+  --system-pink: #ff375f;
+  --system-purple: #bf5af2;
+  --system-red: #ff453a;
+  --system-teal: #40c8e0;
+  --system-yellow: #ffd60a;
+
+  --system-gray: #8e8e93;
+  --system-gray-2: #636366;
+  --system-gray-3: #48484a;
+  --system-gray-4: #3a3a3c;
+  --system-gray-5: #2c2c2e;
+  --system-gray-6: #1c1c1e;
+
+  --label: #ffffff;
+  --secondary-label: rgb(235 235 245 / 0.6);
+  --tertiary-label: rgb(235 235 245 / 0.3);
+  --quaternary-label: rgb(235 235 245 / 0.16);
+  --placeholder-text: rgb(235 235 245 / 0.3);
+
+  --system-background: #000000;
+  --secondary-system-background: #1c1c1e;
+  --tertiary-system-background: #2c2c2e;
+  --system-grouped-background: #000000;
+  --secondary-system-grouped-background: #1c1c1e;
+  --tertiary-system-grouped-background: #2c2c2e;
+
+  --system-fill: rgb(120 120 128 / 0.36);
+  --secondary-system-fill: rgb(120 120 128 / 0.32);
+  --tertiary-system-fill: rgb(118 118 128 / 0.24);
+  --quaternary-system-fill: rgb(118 118 128 / 0.18);
+
+  --separator: rgb(84 84 88 / 0.6);
+  --opaque-separator: #38383a;
+
+  --tint: #ff9f0a;
+  --destructive: #ff453a;
+
+  --material: rgb(30 30 30 / 0.65);
+}
+
+/* 偏好减弱透明度时：材质变实底、去模糊（Apple HIG 无障碍要求）；
+   .material-blur（毛玻璃工具类）同步去掉 backdrop-filter，避免实底下仍付模糊的性能成本 */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --material: rgb(242 242 247 / 0.95);
+  }
+  .dark {
+    --material: rgb(28 28 30 / 0.95);
+  }
+  .material-blur {
+    backdrop-filter: none !important;
+  }
+}

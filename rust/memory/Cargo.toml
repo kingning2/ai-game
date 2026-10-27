@@ -1,0 +1,14 @@
+[package]
+name = "memory"
+version = "0.1.0"
+edition = "2024"
+description = "通用 LLM 记忆系统：时间线条目模型（tag/seq/source）+ prompt 渲染，领域无关"
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

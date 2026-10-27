@@ -1,0 +1,29 @@
+[package]
+name = "state"
+version = "0.1.0"
+edition = "2024"
+description = "全局状态管理：AppConfig 配置加载 / AppState 共享状态容器 / Stats 请求统计与 track 中间件"
+
+[dependencies]
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+
+# 内部依赖
+agent.workspace = true
+werewolf.workspace = true
+memory.workspace = true
+utils.workspace = true
+tts.workspace = true
+
+# 平台配置目录定位（agent 配置文件落盘位置）
+dirs = "6"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tokio.workspace = true
+
+[lints]
+workspace = true
