@@ -94,7 +94,7 @@ export function MemoryPanel({ seats, onClose, className }: MemoryPanelProps) {
             className={cn(
               'h-6 w-6 rounded-full text-xs font-medium transition-colors',
               i === seat
-                ? 'bg-blue text-white'
+                ? 'bg-blue text-arena-text'
                 : 'bg-fill text-secondary-label hover:bg-blue/10 hover:text-blue',
             )}
           >
@@ -147,7 +147,7 @@ export function MemoryPanel({ seats, onClose, className }: MemoryPanelProps) {
               }}
               disabled={compacting}
               className={cn(
-                'rounded-full bg-blue px-3 py-1 text-xs font-medium text-white',
+                'rounded-full bg-blue px-3 py-1 text-xs font-medium text-arena-text',
                 'transition-opacity hover:opacity-90 disabled:opacity-50',
               )}
             >

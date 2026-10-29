@@ -101,7 +101,7 @@ impl AgentState {
         let provider = Self::build_provider_or_fallback(&config);
 
         if let Some(path) = &self.path {
-            write_atomic(path, &config)?;
+            write_json_atomic(path, &config)?;
         }
 
         *self.write_config() = config;
@@ -133,30 +133,26 @@ impl AgentState {
     fn read_config(&self) -> RwLockReadGuard<'_, AgentConfig> {
         self.config
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn read_provider(&self) -> RwLockReadGuard<'_, Arc<dyn AgentProvider>> {
         self.provider
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn write_config(&self) -> RwLockWriteGuard<'_, AgentConfig> {
         self.config
             .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn write_provider(&self) -> RwLockWriteGuard<'_, Arc<dyn AgentProvider>> {
         self.provider
             .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
-}
-
-fn write_atomic(path: &Path, config: &AgentConfig) -> Result<(), StateError> {
-    write_json_atomic(path, config)
 }
 
 /// provider 构建失败时的兜底实现：服务照常启动，调用时给出明确错误
@@ -213,7 +209,7 @@ mod tests {
         config.openai.api_key = "sk-test-1234".to_string();
         config.max_tokens = 1024;
 
-        write_atomic(&path, &config).unwrap();
+        write_json_atomic(&path, &config).unwrap();
         let state = AgentState::load(path.clone());
         assert_eq!(state.config().openai.api_key, "sk-test-1234");
         assert_eq!(state.config().max_tokens, 1024);
@@ -234,8 +230,10 @@ mod tests {
         let path = temp_path("update");
         let state = AgentState::load(path.clone());
 
-        let mut config = AgentConfig::default();
-        config.provider = agent::ProviderKind::Anthropic;
+        let mut config = AgentConfig {
+            provider: agent::ProviderKind::Anthropic,
+            ..Default::default()
+        };
         config.anthropic.api_key = "sk-ant-xyz".to_string();
 
         state.update(config).unwrap();
@@ -255,8 +253,10 @@ mod tests {
         let state = AgentState::ephemeral();
         let old = state.config();
         // ephemeral 不落盘，update 只会成功——这里验证的是"成功后内存生效"
-        let mut config = AgentConfig::default();
-        config.max_tokens = 256;
+        let config = AgentConfig {
+            max_tokens: 256,
+            ..Default::default()
+        };
         state.update(config).unwrap();
         assert_eq!(state.config().max_tokens, 256);
         assert_eq!(old.max_tokens, 4096);

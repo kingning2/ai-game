@@ -1,6 +1,6 @@
 use crate::action::Action;
-use crate::board::{BoardConfig, BoardError};
-use crate::error::GameError;
+use crate::board::BoardConfig;
+use crate::error::{BoardError, GameError};
 use crate::event::{GameEvent, NightDeath};
 use crate::phase::{
     CheckRecord, CheckResult, DeathCause, NightStage, Outcome, Phase, PlayerId, PlayerRole,
@@ -195,11 +195,13 @@ impl GameEngine {
         let (wolves, gods, villagers) = self.counts();
         let outcome = if wolves == 0 {
             Some(Outcome::GoodWin)
-        } else if wolves >= gods {
+        } else if gods == 0 {
+            // 屠边：神职全灭
             Some(Outcome::WerewolfWin {
                 reason: WerewolfReason::GodsWiped,
             })
-        } else if wolves >= villagers {
+        } else if villagers == 0 {
+            // 屠边：平民全灭
             Some(Outcome::WerewolfWin {
                 reason: WerewolfReason::VillagersWiped,
             })
@@ -417,6 +419,7 @@ impl GameEngine {
             _ => return Err(GameError::WrongPhase("夜晚动作与当前窗口不符")),
         }
         self.push(GameEvent::NightAction {
+            day,
             actor: self.player(actor).named(),
             action: logged,
         });
@@ -617,11 +620,11 @@ impl GameEngine {
 
     /// 发言轮转：今天已发言数 < 存活数 ⇒ 下一位；否则进入决斗/投票
     fn advance_speech(&mut self, day: u32, just_spoke: PlayerId) {
-        let alive: Vec<PlayerId> = (0..self.total)
+        let alive_count = (0..self.total)
             .filter(|seat| self.player(*seat).alive)
-            .collect();
+            .count();
         let spoken = self.spoken_today(day);
-        if spoken.len() < alive.len() {
+        if spoken < alive_count {
             // 不用 expect：找不到下一位（理论上不可能，防御式处理）直接推进到投票阶段
             if let Some(next) = self.next_alive_speaker((just_spoke + 1) % self.total) {
                 self.phase = Phase::DaySpeech {
@@ -634,17 +637,20 @@ impl GameEngine {
         self.after_speech(day);
     }
 
-    /// 今天已发言的座位列表（从事件流统计）
-    fn spoken_today(&self, day: u32) -> Vec<PlayerId> {
+    /// 今天已发言的座位数（从事件流统计）
+    fn spoken_today(&self, day: u32) -> usize {
         self.events
             .iter()
-            .filter_map(|event| match event {
-                GameEvent::SpeechMade {
-                    day: d, speaker, ..
-                } if *d == day => Some(*speaker),
-                _ => None,
+            .filter(|event| {
+                matches!(
+                    event,
+                    GameEvent::SpeechMade {
+                        day: d,
+                        ..
+                    } if *d == day
+                )
             })
-            .collect()
+            .count()
     }
 
     /// 发言结束 → 骑士决斗窗口（存活且未用过）→ 投票

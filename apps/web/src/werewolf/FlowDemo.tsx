@@ -1,26 +1,42 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  MIN_START_BUFFER_EVENTS,
+  POLL_INTERVAL_MS,
+  WerewolfGame,
+  projectStage,
+} from '@agent-packages/game';
 import { VStack, WerewolfStage, cn, type WerewolfPlayer } from '@agent-packages/shared-ui';
+import { CaptionBar } from './CaptionBar';
 import { HostPanel } from './HostPanel';
 import { MOCK_HOST } from './mock';
+import { MvpPanel } from './MvpPanel';
 import { SpeechPanel } from './SpeechPanel';
-import { buildPlayers, type BoardDef } from './boards';
-import { fetchGameStatus, startGame, toServerBoard, type GameStatusDto } from './liveClient';
+import { speak, stopSpeaking } from './speech';
+import { buildPlayers, dealtFromServer, type BoardDef } from './boards';
+import {
+  fetchGameStatus,
+  startGame,
+  toServerBoard,
+  type GameLocator,
+  type GameStatusDto,
+} from './liveClient';
 import type { Player } from './types';
+import { RecordButton, useRecorder } from './useRecorder';
 
 /** 夜间动作标记：刀 / 盾 / 救 / 查验结果（demo 展示件，色语义与 RoleBadge 对齐） */
 function SeatMark({ kind }: { kind: 'kill' | 'guard' | 'good' | 'wolf' | 'save' }) {
   const meta = {
-    kill: { text: '刀', cls: 'bg-red text-white' },
-    guard: { text: '盾', cls: 'bg-blue text-white' },
-    good: { text: '好', cls: 'bg-green text-black' },
-    wolf: { text: '狼', cls: 'bg-red text-white' },
-    save: { text: '救', cls: 'bg-green text-black' },
+    kill: { text: '刀', cls: 'bg-red text-arena-text' },
+    guard: { text: '盾', cls: 'bg-blue text-arena-text' },
+    good: { text: '好', cls: 'bg-green text-arena' },
+    wolf: { text: '狼', cls: 'bg-red text-arena-text' },
+    save: { text: '救', cls: 'bg-green text-arena' },
   }[kind];
   return (
     <span
       className={cn(
         'flex size-7 items-center justify-center rounded-full text-xs font-black shadow-card',
-        'ring-1 ring-white/30',
+        'ring-1 ring-arena-line',
         meta.cls,
       )}
     >
@@ -217,55 +233,24 @@ function toStagePlayer(p: Player, step: FlowStep): WerewolfPlayer {
   };
 }
 
-function liveToStageView(status: GameStatusDto, players: Player[], roomName: string) {
-  const events = status.events;
-  const last = events.at(-1);
-  const dead = new Set(
-    events
-      .filter((e) => e.kind === 'died')
-      .map((e) => e.seat)
-      .filter((s) => s !== null),
+/** 开局倒计时浮层：5-4-3-2-1 逐秒过场（stage 就绪前在等待页展示，倒数完才开演） */
+function CountdownOverlay({ value, waiting }: { value: number; waiting: boolean }) {
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-arena/70 backdrop-blur-sm">
+      <p className="animate-fade-in text-lg font-medium text-arena-muted">
+        对局即将开始，请各位选手就位
+      </p>
+      <p
+        key={value}
+        className="animate-zoom-in text-8xl font-black tracking-wider text-arena-text drop-shadow-[0_4px_24px_rgb(0_0_0/0.6)]"
+      >
+        {value > 0 ? value : '开始！'}
+      </p>
+      <p className="animate-fade-in text-sm text-arena-muted">
+        {waiting ? '选手正在入场，主持人整理牌局中……' : '主持人即将入场 · 天黑请闭眼……'}
+      </p>
+    </div>
   );
-  // 发言/狼聊：最近一条带文本的事件（含说话座位）
-  const talk = events
-    .toReversed()
-    .find((e) => (e.kind === 'speech' || e.kind === 'wolf_chat') && e.seat !== null);
-  // 夜晚聚光：最近一条夜行动/狼聊/狼沉默的主角
-  const spotlightSeat = events
-    .toReversed()
-    .find(
-      (e) =>
-        status.phase !== 'day' &&
-        e.seat !== null &&
-        (e.kind === 'night_action' || e.kind === 'wolf_chat' || e.kind === 'wolf_pass'),
-    )?.seat;
-  const speakingSeat = talk?.seat ?? null;
-  const phase: 'night' | 'day' = status.phase === 'day' ? 'day' : 'night';
-  const phaseLabel =
-    status.status === 'ended'
-      ? status.winner === 'werewolf'
-        ? '🐺 狼人阵营获胜'
-        : '☀️ 好人阵营获胜'
-      : phase === 'night'
-        ? `🌙 第 ${status.day} 夜`
-        : `☀️ 第 ${status.day} 天`;
-  const stagePlayers = players.map((p) => ({
-    ...p,
-    status: dead.has(p.id) ? ('dead' as const) : p.status,
-  }));
-  const speaker = speakingSeat !== null ? players.find((p) => p.id === speakingSeat) : undefined;
-  return {
-    events,
-    last,
-    phase,
-    phaseLabel,
-    caption: `${roomName} · 第 ${status.day} ${phase === 'night' ? '夜' : '天'} · 存活 ${status.alive_total}/${status.total}`,
-    stagePlayers,
-    speaker,
-    speechText: talk?.text,
-    spotlightSeats: spotlightSeat !== null && spotlightSeat !== undefined ? [spotlightSeat] : [],
-    hostMessage: last?.text ?? '正在等待引擎推进……',
-  };
 }
 
 /**
@@ -276,69 +261,126 @@ export function FlowDemo({
   board,
   roomName,
   players: playersOverride,
+  spectate = false,
+  roomCode,
   onBack,
 }: {
   board: BoardDef;
   roomName: string;
   /** 发牌结果注入（RoomSetup 随机分配后传入）；缺省取选手池前 N 人 */
   players?: Player[];
+  /** 大厅观战进行中对局：跳过倒计时仪式，直接追平实时进度 */
+  spectate?: boolean;
+  /** 房间号：live 请求全部带 ?room= 定位到该房间的对局（多槽位防串局） */
+  roomCode?: string;
   onBack?: () => void;
 }) {
   const players = useMemo(() => playersOverride ?? buildPlayers(board), [board, playersOverride]);
-  const [live, setLive] = useState<GameStatusDto | null>(null);
-  const [liveError, setLiveError] = useState<string | null>(null);
+  // 对局基类：事件队列 / 回放节奏 / 倒计时全部由 @agent-packages/game 承担，web 只负责拉数据喂入
+  const game = useMemo(() => new WerewolfGame<GameStatusDto>(), []);
+  useEffect(() => () => game.destroy(), [game]);
+  const snapshot = useSyncExternalStore(game.subscribe, game.getSnapshot);
+  const { events, playhead, countdown, replayStarted } = snapshot;
+  const live = snapshot.status;
+  const liveError = snapshot.error;
+  // live 身份牌以 server 真实发牌为准：本地 dealGame 只是预热回退，
+  // 不同步的话狼聊日志里的“3号（狼）”会和座位牌（平民）对不上
+  const livePlayers = useMemo(() => {
+    if (live?.seats === undefined || live.seats.length === 0) return players;
+    return dealtFromServer(board, live.seats, live.seat_roles ?? [], roomCode).players;
+  }, [board, live, players, roomCode]);
   const startedRef = useRef(false);
   const serverBoard = toServerBoard(board.id);
 
-  // live 模式：开局（幂等，已在对局则直接观战）+ 轮询事件流
+  // live 模式：开局（幂等，已在对局则直接观战）+ 轮询事件流；全部带 ?room= 定位。
+  // 拉到的数据 ingest 喂入基类（内部按 seq 去重累积），失败 fail 透出——对接后端只到这一层
   useEffect(() => {
     const target = toServerBoard(board.id);
     if (!target || startedRef.current) return undefined;
     startedRef.current = true;
     const seatNames = players.map((p) => p.name);
-    let cancelled = false;
+    const locator: GameLocator | undefined = roomCode ? { room: roomCode } : undefined;
+    let startTried = false; // 只在首次失败时尝试开局，避免瞬时不可达反复重建对局
     const poll = async () => {
       try {
-        const next = await fetchGameStatus();
-        if (cancelled) return;
-        if (next.status === 'idle') {
-          setLive(await startGame(target, seatNames));
-        } else {
-          setLive(next);
+        const next = await fetchGameStatus(locator);
+        game.ingest({ events: next.events, status: next });
+      } catch {
+        // 定位不到对局（多槽位下无局 → 404）：尝试开局（创建路径；观战路径会拿到房间不存在错误）
+        if (startTried) return;
+        startTried = true;
+        try {
+          const started = await startGame(target, seatNames, roomCode);
+          game.ingest({ events: started.events, status: started });
+        } catch (startErr) {
+          game.fail(startErr instanceof Error ? startErr.message : '连接 server 失败');
         }
-        setLiveError(null);
-      } catch (err) {
-        if (!cancelled) setLiveError(err instanceof Error ? err.message : '连接 server 失败');
       }
     };
     void poll();
-    const timer = setInterval(poll, 1500);
+    const timer = setInterval(poll, POLL_INTERVAL_MS);
+    // 后台 tab 被 Chromium 深度节流（interval 压到 1/分钟）：回到前台立即拉取补齐事件
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void poll();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
-      cancelled = true;
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
       startedRef.current = false;
     };
-  }, [board, players]);
+  }, [board, players, roomCode, game]);
+
+  // 新开局：请求基类开演（事件就绪后自动 5-4-3-2-1 倒计时）；观战回放由「开始回放」按钮点火
+  useEffect(() => {
+    if (serverBoard !== undefined && !spectate) game.begin();
+  }, [game, serverBoard, spectate]);
   const script = useMemo(() => buildScript(board, roomName, players), [board, roomName, players]);
   const [step, setStep] = useState(0);
   const current = script[step];
   const finished = step === script.length - 1;
 
-  // live 视图推导（非 live 为 null）
-  const liveView = useMemo(
-    () => (live ? liveToStageView(live, players, roomName) : null),
-    [live, players, roomName],
-  );
+  // 回放进度全部来自基类快照：events 已按 seq 去重增量累积，playhead 由基类节拍器逐条推进
+  // （倒计时 / 缓冲等待 / 回放点火也都在基类内，web 只消费快照与调用控制方法）
+  const totalEvents = events.length;
+  const caughtUp = countdown === null && playhead >= totalEvents - 1;
+  /** 快进：直接追平服务端最新进度 */
+  const skipToLive = () => game.skipToLive();
+
+  // live 舞台视图 = 已播事件前缀的投影（非 live 为 null）
+  const stage = useMemo(() => {
+    if (!live || playhead < 0) return null;
+    return projectStage(events.slice(0, playhead + 1), livePlayers, roomName);
+  }, [live, events, playhead, livePlayers, roomName]);
 
   // live 模式：对局加载中 / 出错（不再回落 mock 剧本，避免误导）
   const liveMode = serverBoard !== undefined;
 
-  // 定时推进剧本（播完停帧）
+  // 结算：server finish_game 后 winner 出现 → 展示结算浮层 + 主持人宣判语音
+  const winner = liveMode ? (live?.winner ?? null) : null;
+  useEffect(() => {
+    // 回放未追平（还没点结束/演完）不抢跑宣判语音，避免封面页就开始播报胜负
+    if (!winner || !caughtUp) return undefined;
+    const line =
+      winner === 'good'
+        ? '天亮了！好人阵营找出所有狼人，胜利！'
+        : '夜幕降临，狼人阵营潜伏至最后，胜利！';
+    void speak('主持人', line).catch(() => undefined);
+    return () => stopSpeaking();
+  }, [winner, caughtUp]);
+
+  // 对局录制：手动启停，终局（胜负分出）自动停录并下载 webm
+  const recorder = useRecorder(roomName);
+  useEffect(() => {
+    if (winner && recorder.recording) recorder.stop();
+  }, [winner, recorder]);
+
+  // 定时推进剧本（播完停帧）：step 驱动 current 变化，无需入 deps
   useEffect(() => {
     if (finished || !current) return undefined;
     const timer = setTimeout(() => setStep((s) => s + 1), current.duration);
     return () => clearTimeout(timer);
-  }, [step, finished, current]);
+  }, [finished, current]);
 
   const speaker = current.speech
     ? players.find((p) => p.id === current.speech!.playerId)
@@ -346,98 +388,220 @@ export function FlowDemo({
 
   // live 分支渲染：同舞台，数据源换成 server 事件流；未连上时展示等待/错误态
   if (liveMode) {
-    if (!liveView) {
+    if (!stage) {
       return (
-        <div className="flex h-dvh items-center justify-center bg-black">
-          <VStack gap={3} className="items-center text-center">
-            <p className="text-lg font-bold text-white">
-              {liveError ?? '正在连接 server，等待引擎发牌……'}
-            </p>
-            {liveError ? (
-              <p className="max-w-md text-sm text-white/60">
-                请确认 server 已启动（cargo run -p server），且至少配置过一次选手模型。
+        <div className="relative flex h-dvh items-center justify-center overflow-hidden bg-arena">
+          {countdown !== null ? (
+            <CountdownOverlay value={countdown} waiting={totalEvents < MIN_START_BUFFER_EVENTS} />
+          ) : spectate && totalEvents > 0 && !replayStarted ? (
+            <VStack
+              gap={4}
+              className="animate-fade-in items-center rounded-3xl border border-arena-line bg-arena/60 px-12 py-10 text-center shadow-card"
+            >
+              <span className="text-5xl" aria-hidden>
+                🎬
+              </span>
+              <p className="text-lg font-bold text-arena-text">{roomName} · 对局回放</p>
+              <p className="text-sm text-arena-muted">
+                已录制 {totalEvents} 条事件 · 点击开始后从头逐条回放
               </p>
-            ) : null}
+              <button
+                type="button"
+                onClick={() => game.startReplay()}
+                className="rounded-full bg-arena-gold/90 px-6 py-2 text-sm font-bold text-arena shadow-card transition-colors duration-200 hover:bg-arena-gold"
+              >
+                ▶ 开始回放
+              </button>
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="text-xs text-arena-muted hover:text-arena-text"
+                >
+                  ← 返回大厅
+                </button>
+              )}
+            </VStack>
+          ) : (
+            <VStack gap={3} className="items-center text-center">
+              <p className="text-lg font-bold text-arena-text">
+                {liveError ?? '正在连接 server，等待引擎发牌……'}
+              </p>
+              {liveError ? (
+                <p className="max-w-md text-sm text-arena-muted">
+                  请确认 server 已启动（cargo run -p server），且至少配置过一次选手模型。
+                </p>
+              ) : null}
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="rounded-full bg-arena-raised px-4 py-2 text-sm font-medium text-arena-text hover:bg-arena-raised"
+                >
+                  ← 返回大厅
+                </button>
+              )}
+            </VStack>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className="relative flex h-dvh overflow-hidden">
+        <div className="relative min-w-0 flex-1">
+          <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
             {onBack && (
               <button
                 type="button"
                 onClick={onBack}
-                className="rounded-full bg-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/30"
+                className="rounded-full bg-arena/50 px-3 py-1.5 text-xs font-medium text-arena-text shadow-card backdrop-blur-sm hover:bg-arena/70"
               >
                 ← 返回大厅
               </button>
             )}
-          </VStack>
-        </div>
-      );
-    }
-    const stage = liveView;
-    return (
-      <div className="relative h-dvh">
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white shadow-card backdrop-blur-sm hover:bg-black/70"
-            >
-              ← 返回大厅
-            </button>
-          )}
-          <span className="rounded-full bg-green/80 px-3 py-1.5 text-xs font-bold text-black shadow-card">
-            LIVE · 真实对局
-          </span>
-        </div>
-        <WerewolfStage
-          title={roomName}
-          players={stage.stagePlayers.map((p) =>
-            toStagePlayer(p, {
-              phase: stage.phase,
-              phaseLabel: stage.phaseLabel,
-              spotlightSeats: stage.spotlightSeats,
-              speech:
-                stage.speaker && stage.speechText
-                  ? { playerId: stage.speaker.id, text: stage.speechText }
-                  : undefined,
-              deaths: [],
-              duration: 0,
-            }),
-          )}
-          phase={stage.phase}
-          phaseLabel={stage.phaseLabel}
-          caption={stage.caption}
-          backgroundUrl="/werewolf/night-bg.jpg"
-          fullBleed
-        >
-          <VStack gap={3} justify="center" className="h-full w-full">
-            <HostPanel host={MOCK_HOST} message={stage.hostMessage} className="w-full max-w-xl" />
-            {stage.speaker && stage.speechText ? (
-              <SpeechPanel
-                speaker={stage.speaker}
-                text={stage.speechText}
-                className="w-full max-w-xl"
+            <span className="rounded-full bg-green/80 px-3 py-1.5 text-xs font-bold text-arena shadow-card">
+              LIVE · 真实对局
+            </span>
+            <RecordButton
+              recording={recorder.recording}
+              seconds={recorder.seconds}
+              error={recorder.error}
+              onStart={() => void recorder.start()}
+              onStop={recorder.stop}
+            />
+            {/* 服务端超前时展示回放进度，可一键追平 */}
+            {!caughtUp ? (
+              <button
+                type="button"
+                onClick={skipToLive}
+                className="rounded-full bg-arena-raised px-3 py-1.5 text-xs font-medium text-arena-text shadow-card backdrop-blur-sm transition-colors duration-200 hover:bg-arena-raised"
+              >
+                {spectate && replayStarted
+                  ? `⏭ 结束回放 · 跳到最新（${playhead + 2}/${totalEvents}）`
+                  : `⏩ 回放中 ${playhead + 2}/${totalEvents} · 跳到最新`}
+              </button>
+            ) : (
+              // 追平直播后等待服务端下一步（LLM 决策需数秒）：给出明确状态，避免看起来像卡死
+              !winner && (
+                <span className="animate-fade-in rounded-full bg-arena-raised px-3 py-1.5 text-xs font-medium text-arena-muted backdrop-blur-sm">
+                  🔴 跟随直播 · 等待选手行动…
+                </span>
+              )
+            )}
+          </div>
+          {/* 对局日志已改为 flex 右栏，不再叠加在座位上 */}
+          <WerewolfStage
+            title={roomName}
+            players={stage.stagePlayers.map((p) =>
+              toStagePlayer(p, {
+                phase: stage.phase,
+                phaseLabel: stage.phaseLabel,
+                spotlightSeats: stage.spotlightSeats,
+                speech:
+                  stage.speaker && stage.speechText
+                    ? { playerId: stage.speaker.id, text: stage.speechText }
+                    : undefined,
+                deaths: [],
+                duration: 0,
+              }),
+            )}
+            phase={stage.phase}
+            phaseLabel={stage.phaseLabel}
+            caption={stage.caption}
+            backgroundUrl="/werewolf/night-bg.jpg"
+            fullBleed
+          >
+            <VStack gap={3} justify="center" className="h-full w-full">
+              <HostPanel host={MOCK_HOST} message={stage.hostMessage} className="w-full max-w-xl" />
+              {stage.speaker && stage.speechText ? (
+                <SpeechPanel
+                  speaker={stage.speaker}
+                  text={stage.speechText}
+                  className="w-full max-w-xl"
+                />
+              ) : null}
+              <CaptionBar
+                voice={stage.speaker?.name ?? '主持人'}
+                text={stage.speechText ?? stage.hostMessage}
+                preamble={
+                  stage.speechText && stage.speaker
+                    ? `有请 ${stage.speaker.id} 号玩家，${stage.speaker.name}，请发言。`
+                    : undefined
+                }
               />
-            ) : null}
-            {liveError ? (
-              <p className="rounded-full bg-red/80 px-4 py-1.5 text-xs font-medium text-white">
-                {liveError}
-              </p>
-            ) : null}
-          </VStack>
-        </WerewolfStage>
+              {liveError ? (
+                <p className="rounded-full bg-red/80 px-4 py-1.5 text-xs font-medium text-arena-text">
+                  {liveError}
+                </p>
+              ) : null}
+            </VStack>
+          </WerewolfStage>
+        </div>
+        {/* 结算浮层：胜负 + 全场身份回顾（server finish_game 已落库）；回放未追平时不抢跑 */}
+        {winner && caughtUp ? (
+          <div className="animate-fade-in absolute inset-0 z-20 flex items-center justify-center bg-arena/80 backdrop-blur-md">
+            <VStack
+              gap={5}
+              className="items-center rounded-3xl border border-arena-line bg-arena/60 px-12 py-10 text-center shadow-card"
+            >
+              <span className="text-6xl" aria-hidden>
+                {winner === 'good' ? '🌞' : '🐺'}
+              </span>
+              <h2 className="text-3xl font-black tracking-wide text-arena-text">
+                {winner === 'good' ? '好人阵营 · 胜利' : '狼人阵营 · 胜利'}
+              </h2>
+              <p className="text-sm text-arena-muted">鏖战 {live?.day ?? '?'} 天 · 全场身份回顾</p>
+              {live?.stale ? (
+                <span className="rounded-full bg-arena-raised px-3 py-0.5 text-xs font-bold text-arena-muted">
+                  ⚠ 对局已中断（服务器重启）
+                </span>
+              ) : null}
+              <ul className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-1.5 text-left text-sm">
+                {(live?.seats ?? []).map((name, i) => (
+                  <li key={name} className="flex items-center justify-between gap-3">
+                    <span className="text-arena-muted">
+                      {i + 1}. {name}
+                    </span>
+                    <span className="font-mono text-xs text-arena-muted">
+                      {live?.seat_roles?.[i] ?? '?'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {/* 赛后 MVP：pending 时随既有 status 轮询自动刷新到 done；null（手动终局/中断局）不渲染 */}
+              <MvpPanel mvp={live?.mvp} />
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="mt-2 rounded-full bg-arena-gold/90 px-5 py-2 text-sm font-bold text-arena shadow-card hover:bg-arena-gold"
+                >
+                  回到大厅 →
+                </button>
+              )}
+            </VStack>
+          </div>
+        ) : null}
       </div>
     );
   }
 
   return (
-    <div className="relative h-dvh">
-      {/* 演示控制：返回大厅 / 重播 */}
+    <div className="relative h-dvh overflow-hidden">
+      {/* 演示控制：返回大厅 / 重播 / 录制 */}
       <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+        <RecordButton
+          recording={recorder.recording}
+          seconds={recorder.seconds}
+          error={recorder.error}
+          onStart={() => void recorder.start()}
+          onStop={recorder.stop}
+        />
         {onBack && (
           <button
             type="button"
             onClick={onBack}
-            className="rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white shadow-card backdrop-blur-sm hover:bg-black/70"
+            className="rounded-full bg-arena/50 px-3 py-1.5 text-xs font-medium text-arena-text shadow-card backdrop-blur-sm hover:bg-arena/70"
           >
             ← 返回大厅
           </button>
@@ -446,7 +610,7 @@ export function FlowDemo({
           <button
             type="button"
             onClick={() => setStep(0)}
-            className="animate-fade-in rounded-full bg-yellow/90 px-3 py-1.5 text-xs font-bold text-black shadow-card hover:bg-yellow"
+            className="animate-fade-in rounded-full bg-arena-gold/90 px-3 py-1.5 text-xs font-bold text-arena shadow-card hover:bg-arena-gold"
           >
             ↻ 重播流程
           </button>
@@ -469,6 +633,15 @@ export function FlowDemo({
           {speaker && current.speech ? (
             <SpeechPanel speaker={speaker} text={current.speech.text} className="w-full max-w-xl" />
           ) : null}
+          <CaptionBar
+            voice={current.speech ? (speaker?.name ?? '主持人') : '主持人'}
+            text={current.speech?.text ?? current.host ?? ''}
+            preamble={
+              current.speech
+                ? `有请 ${current.speech.playerId} 号玩家，${speaker?.name ?? ''}，请发言。`
+                : undefined
+            }
+          />
         </VStack>
       </WerewolfStage>
     </div>

@@ -1,7 +1,9 @@
-//! 选手级模型配置端点：12 名选手各自的 provider / 模型 / Key。
+//! 选手级模型配置端点：内置 12 名选手 + 自建选手各自的 provider / 模型 / Key。
 //!
 //! - `GET /api/roster`：全员有效配置（覆盖合并进全局后的形态，Key 脱敏）+ 各自覆盖明细
-//! - `PUT /api/roster/{name}`：设置覆盖（字段缺省 = 继承全局；全字段缺省 = 清除覆盖回全局）
+//! - `PUT /api/roster/{name}`：设置覆盖（字段缺省 = 继承全局；全字段缺省 = 清除覆盖回全局）；
+//!   名单外选手视为自建选手直接入库
+//! - `DELETE /api/roster/{name}`：删除自建选手（内置选手 400）
 //!
 //! 覆盖持久化到 `roster.json`；编排层用 `state.roster.resolve(name, global)` 取选手有效配置。
 //! 前端 DTO 在 `apps/web` 手写对齐（字段变更时同步修改）。
@@ -9,7 +11,7 @@
 use crate::error::{ApiError, ApiResponse, ApiResult, AppError};
 use axum::{Json, Router, extract::Path as AxumPath, extract::State, routing::get};
 use serde::{Deserialize, Serialize};
-use state::{AppState, PlayerOverride, ROSTER_PLAYERS};
+use state::{AppState, PlayerOverride};
 
 use agent::ProviderKind;
 
@@ -18,9 +20,11 @@ use super::agent_config::AgentConfigDto;
 /// 单个选手（GET 响应元素）：覆盖明细 + 合并后的有效配置
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct RosterPlayerDto {
-    /// 选手名（与前端 AGENT_POOL 对齐）
+    /// 选手名（内置 12 人与前端 AGENT_POOL 对齐；自建选手为用户输入）
     pub name: String,
-    /// 是否存在有效覆盖（前端渲染"已单独配置"徽标）
+    /// 自定义头像（emoji 或 URL）；None = 前端用静态资源/首字兑底
+    pub avatar: Option<String>,
+    /// 是否存在有效覆盖（前端渲染“已单独配置”徽标）
     pub has_override: bool,
     /// 覆盖明细；None = 完全跟随全局
     pub player_override: Option<PlayerOverrideDto>,
@@ -39,6 +43,8 @@ pub struct PlayerOverrideDto {
     pub max_tokens: Option<u32>,
     /// 思考模式（`enabled` | `disabled`）；缺省 = 继承全局（不发参数）
     pub thinking: Option<String>,
+    /// 自定义头像（emoji 或图片 URL）；缺省 = 无自定义
+    pub avatar: Option<String>,
 }
 
 /// 单协议连接参数覆盖；字段缺省 = 继承全局。
@@ -67,7 +73,9 @@ pub struct SettingsPatchDto {
 pub async fn get_roster(
     State(state): State<AppState>,
 ) -> ApiResult<Json<ApiResponse<Vec<RosterPlayerDto>>>> {
-    let players = ROSTER_PLAYERS
+    let players = state
+        .roster
+        .player_names()
         .iter()
         .map(|name| player_dto(&state, name))
         .collect();
@@ -85,7 +93,6 @@ pub async fn get_roster(
     responses(
         (status = 200, description = "覆盖已落盘，返回该选手最新配置（全字段缺省 = 清除覆盖）", body = ApiResponse<RosterPlayerDto>),
         (status = 400, description = "字段非法（provider 未知名 / base_url 协议头缺失 / max_tokens 超界等）"),
-        (status = 404, description = "选手名不在名单内"),
         (status = 500, description = "配置文件落盘失败")
     )
 )]
@@ -94,12 +101,38 @@ pub async fn put_roster_player(
     AxumPath(name): AxumPath<String>,
     Json(update): Json<PlayerOverrideDto>,
 ) -> ApiResult<Json<ApiResponse<RosterPlayerDto>>> {
-    if !ROSTER_PLAYERS.contains(&name.as_str()) {
-        return Err(AppError::NotFound(format!("未知选手：{name}")).into());
+    if name.trim().is_empty() {
+        return Err(AppError::BadRequest("选手名不能为空".to_string()).into());
     }
     let player_override = into_override(update)?;
     state.roster.set_override(&name, player_override)?;
     Ok(ApiResponse::ok(player_dto(&state, &name)))
+}
+
+/// DELETE /api/roster/{name}：删除自建选手（内置 12 人 400）
+#[utoipa::path(
+    delete,
+    path = "/api/roster/{name}",
+    tag = "roster",
+    operation_id = "delete_roster_player",
+    params(("name" = String, Path, description = "选手名")),
+    responses(
+        (status = 200, description = "自建选手已删除", body = ApiResponse<Vec<RosterPlayerDto>>),
+        (status = 400, description = "内置选手不可删除")
+    )
+)]
+pub async fn delete_roster_player(
+    State(state): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+) -> ApiResult<Json<ApiResponse<Vec<RosterPlayerDto>>>> {
+    state.roster.remove_player(&name)?;
+    let players = state
+        .roster
+        .player_names()
+        .iter()
+        .map(|name| player_dto(&state, name))
+        .collect();
+    Ok(ApiResponse::ok(players))
 }
 
 fn player_dto(state: &AppState, name: &str) -> RosterPlayerDto {
@@ -107,6 +140,9 @@ fn player_dto(state: &AppState, name: &str) -> RosterPlayerDto {
     let effective = state.roster.resolve(name, &state.agent.config());
     RosterPlayerDto {
         name: name.to_string(),
+        avatar: player_override
+            .as_ref()
+            .and_then(|player_override| player_override.avatar.clone()),
         has_override: player_override.is_some(),
         player_override: player_override.map(override_dto),
         effective: AgentConfigDto::of(&effective),
@@ -126,6 +162,7 @@ fn override_dto(player_override: PlayerOverride) -> PlayerOverrideDto {
         anthropic: player_override.anthropic.map(patch_dto),
         max_tokens: player_override.max_tokens,
         thinking: player_override.thinking.map(thinking_dto),
+        avatar: player_override.avatar,
     }
 }
 
@@ -185,6 +222,7 @@ fn into_override(update: PlayerOverrideDto) -> Result<Option<PlayerOverride>, Ap
         anthropic,
         max_tokens: update.max_tokens,
         thinking: update.thinking.as_deref().map(thinking_from).transpose()?,
+        avatar: update.avatar,
     };
     // 下发了对象但全空时 `set_override` 会自动当作清除（跟随全局）
     Ok(Some(player_override))
@@ -216,6 +254,10 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/roster", get(get_roster))
         .route("/api/roster/{name}", axum::routing::put(put_roster_player))
+        .route(
+            "/api/roster/{name}",
+            axum::routing::delete(delete_roster_player),
+        )
 }
 
 #[cfg(test)]
@@ -260,6 +302,18 @@ mod tests {
                     .body(Body::from(body.to_string()))
                     .unwrap(),
             )
+            .await
+            .unwrap();
+        let status = res.status();
+        let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    async fn delete_json(state: state::AppState, uri: &str) -> (StatusCode, Value) {
+        let res = app(state)
+            .oneshot(Request::delete(uri).body(Body::empty()).unwrap())
             .await
             .unwrap();
         let status = res.status();
@@ -352,15 +406,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_player_returns_404() {
+    async fn custom_player_can_be_created_listed_and_deleted() {
+        let state = test_state();
+        // PUT 名单外选手 = 自建入库（带头像）
         let (status, value) = put_json(
-            test_state(),
-            "/api/roster/路人甲",
-            json!({"max_tokens": 1024}),
+            state.clone(),
+            "/api/roster/%E7%A5%9E%E7%A7%98%E5%98%89%E5%AE%BE",
+            json!({"avatar": "🎭", "openai": {"model": "doubao-seed-2-1-pro"}}),
         )
         .await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_ne!(value["code"], 0);
+        assert_eq!(status, StatusCode::OK, "{value}");
+        assert_eq!(value["data"]["avatar"], "🎭");
+
+        // GET 列表：内置 12 人 + 自建 1 人殿后
+        let (_, value) = get_json(state.clone(), "/api/roster").await;
+        let players = value["data"].as_array().unwrap();
+        assert_eq!(players.len(), 13);
+        assert_eq!(players[12]["name"], "神秘嘉宾");
+
+        // 空名 400；内置选手删除 400
+        let (status, _) = put_json(state.clone(), "/api/roster/%20%20", json!({})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = delete_json(state.clone(), "/api/roster/GPT-6.1").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // 删除自建选手后列表回归 12 人
+        let (_, value) =
+            delete_json(state, "/api/roster/%E7%A5%9E%E7%A7%98%E5%98%89%E5%AE%BE").await;
+        assert_eq!(value["code"], 0);
+        assert_eq!(value["data"].as_array().unwrap().len(), 12);
     }
 
     #[tokio::test]

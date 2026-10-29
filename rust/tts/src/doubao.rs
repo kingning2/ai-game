@@ -14,8 +14,9 @@
 //! 与本地 kokoro 引擎的关系：本模块是独立云端引擎，不走模型资产装配，
 //! 直接调用 [`synthesize`] 即可；音色是豆包官方声音。
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
+use rand::Rng;
 use serde_json::{Value, json};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -74,24 +75,15 @@ pub struct DoubaoConfig {
     pub speaker: String,
     /// 音频格式：`aac` 或 `mp3`
     pub format: String,
-    /// 语速 -1.0 ~ 1.0（0 正常，协议层 ×100 发送）
-    pub speech_rate: f32,
-    /// 音调 -1.0 ~ 1.0（0 正常，协议层 ×100 发送）
-    pub pitch: f32,
-    /// 语言
-    pub language: String,
 }
 
 impl DoubaoConfig {
-    /// 最小配置：仅 Cookie，其余全默认（桃子 / aac / 常速）
+    /// 最小配置：仅 Cookie，其余全默认（桃子 / aac）
     pub fn new(cookie: impl Into<String>) -> Self {
         Self {
             cookie: cookie.into(),
             speaker: DEFAULT_SPEAKER.to_string(),
             format: "aac".to_string(),
-            speech_rate: 0.0,
-            pitch: 0.0,
-            language: "zh".to_string(),
         }
     }
 
@@ -101,13 +93,10 @@ impl DoubaoConfig {
     }
 }
 
-/// 合成结果
+/// 合成结果：音频字节（aac/mp3 裸流，按配置格式拼接）
 #[derive(Debug, Clone, Default)]
 pub struct DoubaoResult {
-    /// 音频字节（aac/mp3 裸流，按配置格式拼接）
     pub audio: Vec<u8>,
-    /// 服务端逐句回传的可读文本（调试 / 字幕用）
-    pub sentences: Vec<String>,
 }
 
 /// 豆包云端支持的音频格式（注意：不支持 mp3，需要 mp3 请拿 aac 后自行转码）
@@ -163,7 +152,7 @@ pub async fn synthesize(config: &DoubaoConfig, text: &str) -> Result<DoubaoResul
             Message::Text(payload) => {
                 let data: Value = serde_json::from_str(&payload)
                     .map_err(|err| TtsError::Ws(format!("JSON 帧解析失败：{err}")))?;
-                handle_event(data, &mut result)?;
+                handle_event(data)?;
             }
             Message::Close(_) => break,
             _ => {}
@@ -178,7 +167,7 @@ pub async fn synthesize(config: &DoubaoConfig, text: &str) -> Result<DoubaoResul
 
 /// 单个 JSON 控制帧：事件分流（还原 Python 的事件分支与错误判定）。
 /// 合成结束不靠显式事件，由连接关闭或 30s 收流超时触发（同 Python）。
-fn handle_event(data: Value, result: &mut DoubaoResult) -> Result<(), TtsError> {
+fn handle_event(data: Value) -> Result<(), TtsError> {
     let event = data
         .get("event")
         .and_then(Value::as_str)
@@ -188,17 +177,7 @@ fn handle_event(data: Value, result: &mut DoubaoResult) -> Result<(), TtsError> 
             tracing::debug!("豆包 TTS 连接成功");
             Ok(())
         }
-        "sentence_start" => {
-            let readable = data
-                .pointer("/sentence_start_result/readable_text")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            tracing::debug!(readable = %readable, "豆包 TTS 句子开始");
-            result.sentences.push(readable);
-            Ok(())
-        }
-        "sentence_end" => Ok(()),
+        // sentence_start/end：无实质信息（音频在二进制帧），留给默认分支
         "error" => Err(TtsError::Ws(format!(
             "服务端错误：{}",
             describe_doubao_error(
@@ -229,21 +208,17 @@ fn handle_event(data: Value, result: &mut DoubaoResult) -> Result<(), TtsError> 
 fn build_request(
     config: &DoubaoConfig,
 ) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, TtsError> {
-    let mut rng = Rng::from_clock();
     let url = format!(
-        "{WS_URL}?speaker={speaker}&format={format}&speech_rate={rate}&pitch={pitch}\
-         &version_code=20800&language={language}&device_platform=web&aid=497858&real_aid=497858\
+        "{WS_URL}?speaker={speaker}&format={format}&speech_rate=0&pitch=0\
+         &version_code=20800&language=zh&device_platform=web&aid=497858&real_aid=497858\
          &pkg_type=release_version&device_id={device_id}&pc_version=2.46.3&web_id={web_id}\
          &tea_uuid={web_id}&region=&sys_region=&samantha_web=1&use-olympus-account=1\
          &web_tab_id={tab_id}",
         speaker = config.speaker,
         format = config.format,
-        rate = scaled(config.speech_rate),
-        pitch = scaled(config.pitch),
-        language = config.language,
-        device_id = rng.next_id(),
-        web_id = rng.next_id(),
-        tab_id = rng.uuid_v4(),
+        device_id = device_id(),
+        web_id = device_id(),
+        tab_id = uuid::Uuid::new_v4(),
     );
 
     let mut request = url
@@ -284,65 +259,13 @@ fn describe_doubao_error(message: &str) -> &str {
     }
 }
 
-/// 语速/音调协议编码：×100 取整（0 保持 0）
-fn scaled(value: f32) -> i32 {
-    if value == 0.0 {
-        0
-    } else {
-        (value * 100.0) as i32
-    }
-}
-
 fn ws_err(context: &'static str) -> impl Fn(tokio_tungstenite::tungstenite::Error) -> TtsError {
     move |err| TtsError::Ws(format!("{context}：{err}"))
 }
 
-/// 极简伪随机数（splitmix64）：只为生成设备指纹，非安全用途。
-/// 种子取系统时钟纳秒 + 进程号，进程内推进保证连续两次取值不同。
-struct Rng(u64);
-
-impl Rng {
-    fn from_clock() -> Self {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos() as u64);
-        Rng(nanos ^ ((std::process::id() as u64) << 32) ^ 0x9E37_79B9_7F4A_7C15)
-    }
-
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-
-    /// 设备 ID：[7.4e18, 7.5e18) 内的随机整数（还原 Python randint 区间）
-    fn next_id(&mut self) -> u64 {
-        7_400_000_000_000_000_000 + self.next() % 100_000_000_000_000_000
-    }
-
-    /// UUID v4 字符串（自产随机位，按 RFC 版本/变体位修正）
-    fn uuid_v4(&mut self) -> String {
-        let mut bytes = [0u8; 16];
-        bytes[..8].copy_from_slice(&self.next().to_le_bytes());
-        bytes[8..].copy_from_slice(&self.next().to_le_bytes());
-        format_uuid(bytes)
-    }
-}
-
-fn format_uuid(mut bytes: [u8; 16]) -> String {
-    bytes[6] = (bytes[6] & 0x0F) | 0x40; // version 4
-    bytes[8] = (bytes[8] & 0x3F) | 0x80; // variant 10
-    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    format!(
-        "{}-{}-{}-{}-{}",
-        &hex[0..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..32]
-    )
+/// 设备指纹随机整数：[7.4e18, 7.5e18)（还原 Python randint 区间，非安全用途）
+fn device_id() -> u64 {
+    7_400_000_000_000_000_000 + rand::rng().random_range(0..100_000_000_000_000_000)
 }
 
 #[cfg(test)]
@@ -350,27 +273,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ids_in_python_range_and_distinct() {
-        let mut rng = Rng::from_clock();
-        let a = rng.next_id();
-        let b = rng.next_id();
+    fn device_ids_in_python_range_and_distinct() {
+        let (a, b) = (device_id(), device_id());
         for id in [a, b] {
             assert!(
                 (7_400_000_000_000_000_000..7_500_000_000_000_000_000).contains(&id),
                 "id {id} 超出 Python randint 区间"
             );
         }
-        assert_ne!(a, b, "连续两次取值应不同");
-    }
-
-    #[test]
-    fn uuid_shape() {
-        let uuid = Rng::from_clock().uuid_v4();
-        assert_eq!(uuid.len(), 36);
-        assert_eq!(&uuid[14..15], "4", "v4 版本位");
-        assert!(matches!(&uuid[19..20], "8" | "9" | "a" | "b"), "变体位");
-        let mut rng = Rng::from_clock();
-        assert_ne!(rng.uuid_v4(), rng.uuid_v4());
+        assert_ne!(a, b, "连续两次取值应不同（概率性，但 1e17 空间内必异）");
     }
 
     #[test]
@@ -386,19 +297,11 @@ mod tests {
         assert!(url.contains("device_platform=web"));
         assert!(url.contains("speech_rate=0"));
         assert!(url.contains("web_tab_id="));
-        // 鉴权与来源头
         assert_eq!(
             request.headers().get(ORIGIN).unwrap(),
             "https://www.doubao.com"
         );
         assert_eq!(request.headers().get(COOKIE).unwrap(), "sessionid=abc");
-    }
-
-    #[test]
-    fn rate_and_pitch_scaled() {
-        assert_eq!(scaled(0.0), 0);
-        assert_eq!(scaled(0.5), 50);
-        assert_eq!(scaled(-0.15), -15);
     }
 
     #[test]

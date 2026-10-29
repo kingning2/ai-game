@@ -8,8 +8,14 @@
 /** 业务成功码 */
 export const SUCCESS_CODE = 0;
 
-/** 后端统一响应包裹 */
-export interface ApiResponse<T = unknown> {
+/**
+ * 递归 JSON 值：替代 any 的「未知数据」表示（项目规范：禁 unknown，未知结构用具体类型或泛型）。
+ * 仅作泛型默认值用——调用方永远应显式声明业务类型。
+ */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/** 后端统一响应包裹（data 允许为任意业务数据，由调用方泛型声明） */
+export interface ApiResponse<T = JsonValue> {
   code: number;
   message: string;
   data: T;
@@ -35,7 +41,7 @@ export class ApiError extends Error {
 
   constructor(
     message: string,
-    options: { kind: ApiErrorKind; code?: number; status?: number; cause?: unknown },
+    options: { kind: ApiErrorKind; code?: number; status?: number; cause?: object },
   ) {
     super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
     this.kind = options.kind;
@@ -65,11 +71,11 @@ export interface RequestOptions {
 
 /** 两个适配器共同的方法签名，可互相替换 */
 export interface RequestClient {
-  get<T = unknown>(url: string, options?: RequestOptions): Promise<T>;
-  post<T = unknown>(url: string, body?: unknown, options?: RequestOptions): Promise<T>;
-  put<T = unknown>(url: string, body?: unknown, options?: RequestOptions): Promise<T>;
-  patch<T = unknown>(url: string, body?: unknown, options?: RequestOptions): Promise<T>;
-  delete<T = unknown>(url: string, options?: RequestOptions): Promise<T>;
+  get<T = JsonValue>(url: string, options?: RequestOptions): Promise<T>;
+  post<T = JsonValue>(url: string, body?: object, options?: RequestOptions): Promise<T>;
+  put<T = JsonValue>(url: string, body?: object, options?: RequestOptions): Promise<T>;
+  patch<T = JsonValue>(url: string, body?: object, options?: RequestOptions): Promise<T>;
+  delete<T = JsonValue>(url: string, options?: RequestOptions): Promise<T>;
 }
 
 /** 客户端公共配置 */

@@ -33,9 +33,6 @@ pub enum GameError {
     /// 女巫想救人但今晚没有刀口（空刀夜不能空救）
     #[error("今晚没有刀口，无法使用解药")]
     NoKillToSave,
-    /// 骑士一局只能决斗一次
-    #[error("骑士一局只能决斗一次")]
-    DuelUsed,
     /// 已投过票（本轮投票权已用）
     #[error("{0} 号本轮已投票")]
     AlreadyVoted(u8),

@@ -14,7 +14,7 @@ pub use agent_state::AgentState;
 pub use app_state::AppState;
 pub use config::AppConfig;
 pub use error::StateError;
-pub use game_state::{GameState, GameStatus, GameView, InvalidTransition};
+pub use game_state::{GameError, GameState, GameStatus, GameView, InvalidTransition, MvpPhase};
 pub use roster_state::{PlayerOverride, ROSTER_PLAYERS, RosterState, SettingsPatch};
 pub use stats::Stats;
 pub use track::track;

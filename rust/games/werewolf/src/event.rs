@@ -20,7 +20,11 @@ pub enum GameEvent {
     /// 天黑
     NightBegan { day: u32 },
     /// 某角色的夜晚动作已收（上帝视角）
-    NightAction { actor: PlayerRole, action: Action },
+    NightAction {
+        day: u32,
+        actor: PlayerRole,
+        action: Action,
+    },
     /// 狼队夜聊耳语（仅上帝与狼队可见；调用方决策层据此同步狼队意图）
     WolfChatSpoke {
         day: u32,
@@ -71,6 +75,27 @@ pub enum GameEvent {
     },
     /// 对局结束
     GameOver { outcome: Outcome },
+}
+
+impl GameEvent {
+    /// 事件所属天数（开局/终局/夜间暗中行动为 0）
+    pub fn day(&self) -> u32 {
+        match self {
+            GameEvent::GameStarted { .. }
+            | GameEvent::GameOver { .. }
+            | GameEvent::NightAction { .. } => 0,
+            GameEvent::NightBegan { day }
+            | GameEvent::Dawn { day, .. }
+            | GameEvent::SpeechMade { day, .. }
+            | GameEvent::KnightDuelResolved { day, .. }
+            | GameEvent::VoteResolved { day, .. }
+            | GameEvent::IdiotRevealed { day, .. }
+            | GameEvent::HunterShotFired { day, .. }
+            | GameEvent::PlayerDied { day, .. }
+            | GameEvent::WolfChatSpoke { day, .. }
+            | GameEvent::WolfChatPassed { day, .. } => *day,
+        }
+    }
 }
 
 /// 夜晚死者（天亮公布用）

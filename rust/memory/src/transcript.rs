@@ -67,8 +67,6 @@ pub struct CompactionPlan {
     pub older_count: usize,
     /// 待压缩段的渲染文本（直接作 LLM 输入）
     pub older_text: String,
-    /// 保留原文的条目数
-    pub keep_count: usize,
 }
 
 /// 一个主体的完整记忆：按时间序的事实流水
@@ -115,7 +113,6 @@ impl AgentMemory {
             first_seq: older[0].seq,
             older_count,
             older_text,
-            keep_count: keep_recent,
         })
     }
 
@@ -218,7 +215,6 @@ mod tests {
         // 超窗：前 3 条为老段
         let plan = memory.compaction_plan(2).expect("超窗必有方案");
         assert_eq!(plan.older_count, 3);
-        assert_eq!(plan.keep_count, 2);
         assert_eq!(plan.first_seq, 1);
         assert!(plan.older_text.contains("[#1·note]事实1"));
         assert!(plan.older_text.contains("[#3·note]事实3"));
@@ -267,7 +263,6 @@ mod tests {
             first_seq: 1,
             older_count: 0,
             older_text: String::new(),
-            keep_count: 4,
         };
         assert!(!memory.apply_compaction(&empty, "空"), "older_count=0 拒绝");
         // 越界
@@ -275,7 +270,6 @@ mod tests {
             first_seq: 1,
             older_count: 99,
             older_text: String::new(),
-            keep_count: 0,
         };
         assert!(!memory.apply_compaction(&huge, "越界"), "越界拒绝");
         // 锚点不符（记忆被重算后 first_seq 变化）
@@ -283,7 +277,6 @@ mod tests {
             first_seq: 99,
             older_count: 1,
             older_text: String::new(),
-            keep_count: 3,
         };
         assert!(!memory.apply_compaction(&stale, "锚错"), "锚点不符拒绝");
         assert_eq!(memory.len(), 2, "拒绝路径不改动记忆");

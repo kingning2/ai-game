@@ -8,3 +8,4 @@
 
 pub mod autoplay;
 pub mod memory;
+pub mod mvp;

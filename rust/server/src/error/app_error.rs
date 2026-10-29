@@ -185,7 +185,7 @@ impl From<AgentError> for AppError {
 impl From<state::StateError> for AppError {
     fn from(err: state::StateError) -> Self {
         match err {
-            state::StateError::NotFound(message) => Self::NotFound(message),
+            state::StateError::Invalid(message) => Self::BadRequest(message),
             // 持久化失败：完整上下文与底层原因进 source 链，只进日志
             persist_error => Self::internal(persist_error),
         }

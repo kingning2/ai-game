@@ -1,7 +1,9 @@
+import { Method } from './fetch';
 import {
   ApiError,
   SUCCESS_CODE,
   type ApiResponse,
+  type JsonValue,
   type QueryParams,
   type RequestOptions,
 } from './types';
@@ -32,7 +34,7 @@ export function buildQuery(query: QueryParams | undefined): string {
 }
 
 /** 去重键：method + url + 排序后的 query（key 顺序不同视为同一请求） */
-export function dedupeKey(method: string, url: string, query: QueryParams | undefined): string {
+export function dedupeKey(method: Method, url: string, query: QueryParams | undefined): string {
   const qs = query
     ? Object.keys(query)
         .filter((k) => query[k] !== undefined && query[k] !== null)
@@ -54,7 +56,7 @@ export function combineSignals(
 }
 
 /** 判断响应体是否是约定的 {code, message, data} 包裹（data 允许为任意值/缺失内容，但字段需在） */
-export function isEnvelope(value: unknown): value is ApiResponse {
+export function isEnvelope(value: object | null | undefined): value is ApiResponse {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -65,7 +67,10 @@ export function isEnvelope(value: unknown): value is ApiResponse {
 }
 
 /** 不是包裹结构时抛 parse 错误；调用处已确认是包裹时由泛型声明 data 的类型 */
-export function assertEnvelope<T = unknown>(value: unknown, status: number): ApiResponse<T> {
+export function assertEnvelope<T = JsonValue>(
+  value: object | null | undefined,
+  status: number,
+): ApiResponse<T> {
   if (isEnvelope(value)) return value as ApiResponse<T>;
   throw new ApiError(`响应不是约定的 {code, message, data} 结构（HTTP ${status}）`, {
     kind: 'parse',
@@ -94,13 +99,14 @@ export function unwrapEnvelope<T>(
  * Promise 结束（成功或失败）后移除登记。
  */
 export function createDedupeCache() {
-  const inflight = new Map<string, Promise<unknown>>();
+  // 值类型 Promise<never>：never 可赋给任何 Promise<T>（读方向免费），写方向由调用点断言收窄
+  const inflight = new Map<string, Promise<never>>();
   return {
     run<T>(key: string, enabled: boolean, factory: () => Promise<T>): Promise<T> {
       if (!enabled) return factory();
       const cached = inflight.get(key);
-      if (cached) return cached as Promise<T>;
-      const promise = factory().finally(() => inflight.delete(key));
+      if (cached) return cached;
+      const promise = factory().finally(() => inflight.delete(key)) as Promise<never>;
       inflight.set(key, promise);
       return promise;
     },

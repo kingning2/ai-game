@@ -61,17 +61,4 @@ impl GameSummary {
             roles,
         }
     }
-
-    /// 指定身份的存活数（板子里没有该身份则返回 0）
-    pub fn alive_of(&self, role: Role) -> u8 {
-        self.roles
-            .iter()
-            .find(|entry| entry.role == role)
-            .map_or(0, |entry| entry.alive)
-    }
-
-    /// 便捷查询：狼人还剩几个
-    pub fn wolves_alive(&self) -> u8 {
-        self.alive_of(Role::Werewolf)
-    }
 }

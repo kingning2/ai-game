@@ -19,8 +19,9 @@ use tower_http::cors::CorsLayer;
 
 use crate::error::BoxError;
 use crate::openapi as docs;
-use crate::routes::{agent_config, health, info, roster, tts, werewolf};
-use logging::{error, info};
+use crate::routes::rooms;
+use crate::routes::{agent_config, health, info, leaderboard, roster, tts, werewolf};
+use tracing::{error, info};
 
 /// 生命周期入口：`main()` 唯一调用点
 pub async fn run() {
@@ -36,9 +37,21 @@ pub async fn run() {
     on_shutdown(&state);
 }
 
+/// 全局日志初始化（自 logging crate 内联：单一调用方，不值得独立成包）
+fn init_logging() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .with_thread_ids(true)
+        .compact()
+        .init();
+}
+
 /// 阶段 1：初始化一切。当前无失败路径；需要可失败时改返回 `Result<AppState, BoxError>`
 fn bootstrap() -> AppState {
-    logging::init();
+    init_logging();
 
     info!("日志初始化成功");
 
@@ -52,6 +65,19 @@ fn bootstrap() -> AppState {
     };
 
     let state = AppState::new(config.clone(), agent);
+    // 开机清扫：上次运行遗留的未完局标记 stale 结束（前端降级显示真实结算）
+    if let Some(conn) = state
+        .db
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+    {
+        match db::finish_stale_games(conn) {
+            Ok(n) if n > 0 => info!(swept = n, "已清扫上次运行遗留的未完局"),
+            Ok(_) => {}
+            Err(err) => error!(error = %err, "清扫未完局失败"),
+        }
+    }
     info!(address = %config.address, port = config.port, "配置加载完成");
     state
 }
@@ -99,6 +125,8 @@ fn build_router(state: AppState) -> Router {
         .merge(info::router())
         .merge(agent_config::router())
         .merge(roster::router())
+        .merge(rooms::router())
+        .merge(leaderboard::router())
         .merge(werewolf::router())
         .merge(tts::router())
         .merge(docs::router())

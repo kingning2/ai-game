@@ -49,7 +49,7 @@ pub struct GameSnapshot {
 /// `viewer_is_wolf`：玩家视角是否狼（狼队夜聊只对狼开放，上帝全见）
 fn is_visible_event(event: &GameEvent, viewer: Viewer, viewer_is_wolf: bool) -> bool {
     match event {
-        GameEvent::NightAction { actor, action } => match viewer {
+        GameEvent::NightAction { actor, action, .. } => match viewer {
             Viewer::God => true,
             Viewer::Player(id) => {
                 actor.id == id
@@ -76,7 +76,7 @@ fn render_log(event: &GameEvent) -> (u32, String) {
             format!("{players} 人对局开始（{board}）")
         }
         GameEvent::NightBegan { day } => format!("第 {day} 夜降临"),
-        GameEvent::NightAction { actor, action } => {
+        GameEvent::NightAction { actor, action, .. } => {
             format!(
                 "{} 号（{}）{}",
                 actor.id,
@@ -175,21 +175,7 @@ fn render_log(event: &GameEvent) -> (u32, String) {
             },
         },
     };
-    let day = match event {
-        GameEvent::GameStarted { .. } | GameEvent::GameOver { .. } => 0,
-        GameEvent::NightBegan { day }
-        | GameEvent::Dawn { day, .. }
-        | GameEvent::SpeechMade { day, .. }
-        | GameEvent::KnightDuelResolved { day, .. }
-        | GameEvent::VoteResolved { day, .. }
-        | GameEvent::IdiotRevealed { day, .. }
-        | GameEvent::HunterShotFired { day, .. }
-        | GameEvent::PlayerDied { day, .. }
-        | GameEvent::WolfChatSpoke { day, .. }
-        | GameEvent::WolfChatPassed { day, .. } => *day,
-        GameEvent::NightAction { .. } => 0,
-    };
-    (day, text)
+    (event.day(), text)
 }
 
 impl GameSnapshot {

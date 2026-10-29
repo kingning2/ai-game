@@ -110,26 +110,32 @@ impl AgentConfig {
     }
 }
 
+/// 共享 HTTP 客户端（两家 provider 同参）。
+/// `Err` 仅在 reqwest Client 构建失败时出现（TLS 后端初始化等环境问题）
+pub(crate) fn http_client() -> AgentResult<reqwest::Client> {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        // 整体请求超时：SSE 流挂起（服务端无响应/网络抖动）时兜底，
+        // 120s 足够思考型模型完成一次 512 token 内的决策
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| AgentError::Config(format!("HTTP 客户端构建失败：{e}")))
+}
+
 /// 按配置构建 provider（Arc<dyn AgentProvider>，AppState 里直接挂这个）。
 /// `Err` 仅在 HTTP 客户端构建失败时出现；未配 Key 不报错，调用时才报
 pub fn build_provider(config: &AgentConfig) -> AgentResult<Arc<dyn AgentProvider>> {
     let settings = config.active_settings();
-    match config.provider {
-        ProviderKind::OpenAi => {
-            let provider = OpenAiProvider::new(settings.clone(), config.max_tokens)?;
-            if let Err(err) = settings.require_key() {
-                tracing::warn!(error = %err, "OpenAI 兼容 provider 未配置 Key，调用时会报错");
-            }
-            Ok(Arc::new(provider))
-        }
-        ProviderKind::Anthropic => {
-            let provider = AnthropicProvider::new(settings.clone(), config.max_tokens)?;
-            if let Err(err) = settings.require_key() {
-                tracing::warn!(error = %err, "Anthropic provider 未配置 Key，调用时会报错");
-            }
-            Ok(Arc::new(provider))
-        }
+    if let Err(err) = settings.require_key() {
+        tracing::warn!(error = %err, "provider 未配置 Key，调用时会报错");
     }
+    let provider: Arc<dyn AgentProvider> = match config.provider {
+        ProviderKind::OpenAi => Arc::new(OpenAiProvider::new(settings.clone(), config.max_tokens)?),
+        ProviderKind::Anthropic => {
+            Arc::new(AnthropicProvider::new(settings.clone(), config.max_tokens)?)
+        }
+    };
+    Ok(provider)
 }
 
 #[cfg(test)]

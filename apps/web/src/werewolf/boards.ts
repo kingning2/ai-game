@@ -115,26 +115,86 @@ export function buildPlayers(board: BoardDef): Player[] {
     id: i + 1,
     name: p.name,
     avatarSrc: p.avatarSrc,
-    role: board.roles[i]!,
+    role: board.roles[i],
     status: 'alive' as const,
   }));
 }
 
 /** 发牌结果：洗牌后的板子（座位参数同步重派生）+ 入座玩家 */
-export type DealtGame = { board: BoardDef; players: Player[] };
+export type DealtGame = {
+  board: BoardDef;
+  players: Player[];
+  /** 真实房间号（SQLite 落库后回填；undefined = 房间服务不可用降级） */
+  roomCode?: string;
+};
+
+// 真实房间号（SQLite 落库后回填；undefined = 房间服务不可用降级）
+
+/** 从座位池随机取一个（剧本刀/验目标） */
+function pickSeat(pool: number[]): number {
+  const idx = Math.floor(Math.random() * pool.length);
+  return pool[idx] ?? pool[0];
+}
+
+/** 角色显示名 → 角色代码（server seat_roles 反查） */
+const ROLE_BY_LABEL: Record<string, Role> = {
+  狼人: 'werewolf',
+  预言家: 'seer',
+  女巫: 'witch',
+  守卫: 'guard',
+  猎人: 'hunter',
+  平民: 'villager',
+};
+
+/**
+ * 采用 server 真实发牌：座位名单与身份全部来自引擎（预热开局后拉取），
+ * 保证观战界面的身份牌与真实对局一致。
+ */
+export function dealtFromServer(
+  board: BoardDef,
+  seats: string[],
+  seatRoles: string[],
+  roomCode?: string,
+): DealtGame {
+  const roles = seatRoles.map((label) => ROLE_BY_LABEL[label] ?? 'villager');
+  const seatOf = (role: Role): number[] =>
+    roles.reduce<number[]>((acc, r, i) => (r === role ? [...acc, i + 1] : acc), []);
+  const goodSeats = roles.reduce<number[]>(
+    (acc, r, i) => (r !== 'werewolf' ? [...acc, i + 1] : acc),
+    [],
+  );
+  const withRoles: BoardDef = {
+    ...board,
+    roles,
+    wolfSeats: seatOf('werewolf'),
+    seerSeat: seatOf('seer')[0],
+    witchSeat: seatOf('witch')[0],
+    guardSeat: seatOf('guard')[0],
+    killTarget: pickSeat(goodSeats),
+    checkTarget: pickSeat(goodSeats),
+  };
+  const players: Player[] = seats.map((name, i) => ({
+    id: i + 1,
+    name,
+    avatarSrc: AGENT_POOL.find((a) => a.name === name)?.avatarSrc ?? '',
+    role: roles[i] ?? 'villager',
+    status: 'alive' as const,
+  }));
+  return { board: withRoles, players, roomCode };
+}
 
 /** Fisher-Yates 原地洗牌（副本上操作） */
 function shuffle<T>(items: T[]): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j]!, out[i]!];
+    [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
 }
 
 /**
- * 随机发牌：洗 role 序列 + 按新角色分布重派生剧本座位参数（狼位/神位随机化），
+ * 随机发牌（server 不可达时的本地回退）：洗 role 序列 + 按新角色分布重派生剧本座位参数，
  * 刀/验目标重随机到非狼座位（剧本语义：狼刀目标、预言家验出好人）。
  * members 为选中的选手（按入座顺序），数量须等于 board.total。
  */
@@ -149,23 +209,22 @@ export function dealGame(
     (acc, r, i) => (r !== 'werewolf' ? [...acc, i + 1] : acc),
     [],
   );
-  const pick = (seats: number[]): number => seats[Math.floor(Math.random() * seats.length)]!;
   return {
     board: {
       ...board,
       roles,
       wolfSeats: seatOf('werewolf'),
-      seerSeat: seatOf('seer')[0]!,
+      seerSeat: seatOf('seer')[0],
       witchSeat: seatOf('witch')[0],
       guardSeat: seatOf('guard')[0],
-      killTarget: pick(goodSeats),
-      checkTarget: pick(goodSeats),
+      killTarget: pickSeat(goodSeats),
+      checkTarget: pickSeat(goodSeats),
     },
     players: members.map((m, i) => ({
       id: i + 1,
       name: m.name,
       avatarSrc: m.avatarSrc,
-      role: roles[i]!,
+      role: roles[i],
       status: 'alive' as const,
     })),
   };

@@ -12,26 +12,37 @@
 //! 生命周期非法转移返回 409（如 running 时再 start、idle 时 pause）。
 //! Apifox：`GET /api-docs/openapi.json` 的 `game` tag 已含全部端点。
 
-use crate::error::{ApiResponse, ApiResult, AppError};
+use crate::error::{ApiError, ApiResponse, ApiResult, AppError};
 use axum::{
     Json, Router,
     extract::{Query, State},
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
-use state::{AppState, GameState, GameStatus, GameView, InvalidTransition};
+use state::{AppState, GameError, GameState, GameStatus, GameView, InvalidTransition};
 use werewolf::{Action, DeathCause, GameEngine, GameEvent, Outcome, PlayerId, Role};
+
+/// game 路由定位参数：`?room=房间码`（优先）或 `?game=对局 id`；都缺省用最近启动的对局
+#[derive(Default, Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
+pub struct GameQuery {
+    /// 房间码（优先于 game；按 db 该房间最近一局定位）
+    pub room: Option<String>,
+    /// 对局 id（裸局为负数自增 id）
+    pub game: Option<i64>,
+}
 
 /// POST /api/game/start 请求体：全字段可选（缺省 = 全明星板 + 随机种子）
 #[derive(Default, Deserialize, utoipa::ToSchema)]
 pub struct GameStartRequest {
-    /// 板子预设：`newbie_six`（新手 6 人局）/ `nine_standard`（经典 9 人局，缺省）/ `all_stars`（全角色 14 人局）
+    /// 板子预设：`newbie_six`（新手 6 人局）/ `nine_standard`（经典 9 人局，缺省）/ `all_stars`（全明星 12 人局）
     pub board: Option<String>,
     /// 随机种子：缺省或 0 = 服务端随机生成；同种子同发牌（可复现）
     pub seed: Option<u64>,
     /// 座位 → 选手名（长度须等于座位数；缺省取选手名册前 N 位）。
     /// LLM 决策按名取选手模型配置
     pub players: Option<Vec<String>>,
+    /// 房间号（SQLite 房间；传入则身份落库 + 事件流水关联该房间）
+    pub room_code: Option<String>,
 }
 
 /// 单个身份的存活统计
@@ -72,6 +83,12 @@ pub struct GameStatusDto {
     pub ended_reason: Option<String>,
     /// 座位 → 选手名（未开局为空）
     pub seats: Vec<String>,
+    /// 座位 → 角色显示名（上帝视角；未开局为空）
+    pub seat_roles: Vec<String>,
+    /// 服务器重启导致的中断标记（重启后历史局的降级结算为 true；实时视图为 null）
+    pub stale: Option<bool>,
+    /// 赛后 MVP 投票（无 MVP 流程的局为 null；见 [`MvpDto`]）
+    pub mvp: Option<MvpDto>,
     /// 上帝视角事件流（按发生顺序）；未开局为空
     pub events: Vec<GameEventDto>,
 }
@@ -90,173 +107,197 @@ pub struct GameEventDto {
     pub seat: Option<u8>,
     /// 面向观战者的中文描述
     pub text: String,
+    /// dawn：昨夜死亡座位列表（平安夜为空）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deaths: Vec<u8>,
+    /// vote：平票（无人放逐）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tie: bool,
+    /// vote 放逐座位 / hunter 枪击目标座位 / duel 败者座位
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<u8>,
 }
 
 /// 上帝视角事件渲染：`(day, kind, seat, 文本)`；未知事件返回 `None`
-pub fn render_event(
-    event: &GameEvent,
-    secret_visible: bool,
-) -> Option<(u32, &'static str, Option<PlayerId>, String)> {
-    #[allow(clippy::type_complexity)]
-    fn inner(
-        event: &GameEvent,
-        secret_visible: bool,
-    ) -> Option<(u32, &'static str, Option<PlayerId>, String)> {
-        match event {
-            GameEvent::GameStarted { players, board } => {
-                let roles = board
-                    .iter()
-                    .map(|(name, count)| format!("{name}x{count}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                Some((
-                    u32::from(*players),
-                    "started",
-                    None,
-                    format!("开局：{players} 人（{roles}）"),
-                ))
-            }
-            GameEvent::NightBegan { day } => {
-                Some((*day, "night", None, format!("第 {day} 夜天黑")))
-            }
-            GameEvent::NightAction { actor, action } => secret_visible.then(|| {
-                (
-                    0,
-                    "night_action",
-                    Some(actor.id),
-                    format!(
-                        "{}号（{}）：{}",
-                        actor.id,
-                        actor.role.display_name(),
-                        action_text(action)
-                    ),
-                )
-            }),
-            GameEvent::WolfChatSpoke { day, speaker, text } => secret_visible.then(|| {
-                (
-                    *day,
-                    "wolf_chat",
-                    Some(speaker.id),
-                    format!("{}号（狼）耳语：{text}", speaker.id),
-                )
-            }),
-            GameEvent::WolfChatPassed { day, speaker } => secret_visible.then(|| {
-                (
-                    *day,
-                    "wolf_pass",
-                    Some(speaker.id),
-                    format!("{}号（狼）保持沉默", speaker.id),
-                )
-            }),
-            GameEvent::Dawn { day, deaths } => {
-                let text = if deaths.is_empty() {
-                    "平安夜".to_string()
-                } else {
-                    let names = deaths
-                        .iter()
-                        .map(|d| format!("{}号（{}）", d.player, death_text(&d.cause)))
-                        .collect::<Vec<_>>()
-                        .join("、");
-                    format!("昨夜死亡：{names}")
-                };
-                Some((*day, "dawn", None, text))
-            }
-            GameEvent::SpeechMade { day, speaker, text } => {
-                Some((*day, "speech", Some(*speaker), text.clone()))
-            }
-            GameEvent::KnightDuelResolved {
-                day,
-                knight,
-                target,
-                target_is_wolf,
-                loser,
-            } => Some((
+type RenderedEvent = (u32, &'static str, Option<PlayerId>, String);
+
+pub fn render_event(event: &GameEvent, secret_visible: bool) -> Option<RenderedEvent> {
+    /// 引擎座位号 0 起，面向人（主持词/日志/前端匹配）一律 1 起
+    fn n(id: PlayerId) -> PlayerId {
+        id + 1
+    }
+    match event {
+        GameEvent::GameStarted { players, board } => {
+            let roles = board
+                .iter()
+                .map(|(name, count)| format!("{name}x{count}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            Some((
+                u32::from(*players),
+                "started",
+                None,
+                format!("开局：{players} 人（{roles}）"),
+            ))
+        }
+        GameEvent::NightBegan { day } => Some((*day, "night", None, format!("第 {day} 夜天黑"))),
+        GameEvent::NightAction { day, actor, action } => secret_visible.then(|| {
+            (
                 *day,
-                "duel",
-                Some(*knight),
+                "night_action",
+                Some(n(actor.id)),
                 format!(
-                    "{knight}号决斗{target}号：{}（{}是狼人）出局",
-                    loser.role.display_name(),
-                    if *target_is_wolf {
-                        "对方"
-                    } else {
-                        "骑士猜错，自己"
-                    }
+                    "{}号（{}）：{}",
+                    n(actor.id),
+                    actor.role.display_name(),
+                    action_text(action)
                 ),
-            )),
-            GameEvent::VoteResolved {
-                day,
-                counts,
-                tie,
-                exiled,
-            } => {
-                let votes = counts
+            )
+        }),
+        GameEvent::WolfChatSpoke { day, speaker, text } => secret_visible.then(|| {
+            (
+                *day,
+                "wolf_chat",
+                Some(n(speaker.id)),
+                format!("{}号（狼）耳语：{text}", n(speaker.id)),
+            )
+        }),
+        GameEvent::WolfChatPassed { day, speaker } => secret_visible.then(|| {
+            (
+                *day,
+                "wolf_pass",
+                Some(n(speaker.id)),
+                format!("{}号（狼）保持沉默", n(speaker.id)),
+            )
+        }),
+        GameEvent::Dawn { day, deaths } => {
+            let text = if deaths.is_empty() {
+                "平安夜".to_string()
+            } else {
+                let names = deaths
                     .iter()
-                    .map(|(seat, n)| format!("{seat}号x{n}"))
+                    .map(|d| format!("{}号（{}）", n(d.player), death_text(d.cause)))
                     .collect::<Vec<_>>()
                     .join("、");
-                let text = if *tie {
-                    format!("平票，无人放逐（{votes}）")
-                } else {
-                    format!(
-                        "放逐{}号（{}）；{votes}",
-                        exiled.as_ref().map(|p| p.id).unwrap_or_default(),
-                        exiled
-                            .as_ref()
-                            .map(|p| p.role.display_name())
-                            .unwrap_or("？")
-                    )
-                };
-                Some((*day, "vote", None, text))
-            }
-            GameEvent::IdiotRevealed { day, idiot } => Some((
-                *day,
-                "idiot",
-                Some(*idiot),
-                format!("{idiot}号白痴翻牌免死，失去投票权"),
-            )),
-            GameEvent::HunterShotFired {
-                day,
-                hunter,
-                target,
-            } => Some((
-                *day,
-                "hunter",
-                Some(hunter.id),
-                match target {
-                    Some(t) => format!(
-                        "{}号（{}）开枪带走{}号（{}）",
-                        hunter.id,
-                        hunter.role.display_name(),
-                        t.id,
-                        t.role.display_name()
-                    ),
-                    None => format!("{}号（{}）放弃开枪", hunter.id, hunter.role.display_name()),
-                },
-            )),
-            GameEvent::PlayerDied { day, player, cause } => Some((
-                *day,
-                "died",
-                Some(player.id),
-                format!(
-                    "{}号（{}）出局：{}",
-                    player.id,
-                    player.role.display_name(),
-                    death_text(cause)
-                ),
-            )),
-            GameEvent::GameOver { outcome } => Some((
-                u32::MAX,
-                "over",
-                None,
-                match outcome {
-                    Outcome::WerewolfWin { .. } => "狼人阵营获胜".to_string(),
-                    Outcome::GoodWin => "好人阵营获胜".to_string(),
-                },
-            )),
+                format!("昨夜死亡：{names}")
+            };
+            Some((*day, "dawn", None, text))
         }
+        GameEvent::SpeechMade { day, speaker, text } => {
+            Some((*day, "speech", Some(n(*speaker)), text.clone()))
+        }
+        GameEvent::KnightDuelResolved {
+            day,
+            knight,
+            target,
+            target_is_wolf,
+            loser,
+        } => Some((
+            *day,
+            "duel",
+            Some(n(*knight)),
+            format!(
+                "{}号决斗{}号：{}（{}是狼人）出局",
+                n(*knight),
+                n(*target),
+                loser.role.display_name(),
+                if *target_is_wolf {
+                    "对方"
+                } else {
+                    "骑士猜错，自己"
+                }
+            ),
+        )),
+        GameEvent::VoteResolved {
+            day,
+            counts,
+            tie,
+            exiled,
+        } => {
+            let votes = counts
+                .iter()
+                .map(|(seat, v)| format!("{}号x{v}", n(*seat)))
+                .collect::<Vec<_>>()
+                .join("、");
+            let text = if *tie {
+                format!("平票，无人放逐（{votes}）")
+            } else {
+                format!(
+                    "放逐{}号（{}）；{votes}",
+                    n(exiled.as_ref().map(|p| p.id).unwrap_or_default()),
+                    exiled
+                        .as_ref()
+                        .map(|p| p.role.display_name())
+                        .unwrap_or("？")
+                )
+            };
+            Some((*day, "vote", None, text))
+        }
+        GameEvent::IdiotRevealed { day, idiot } => Some((
+            *day,
+            "idiot",
+            Some(n(*idiot)),
+            format!("{}号白痴翻牌免死，失去投票权", n(*idiot)),
+        )),
+        GameEvent::HunterShotFired {
+            day,
+            hunter,
+            target,
+        } => Some((
+            *day,
+            "hunter",
+            Some(n(hunter.id)),
+            match target {
+                Some(t) => format!(
+                    "{}号（{}）开枪带走{}号（{}）",
+                    n(hunter.id),
+                    hunter.role.display_name(),
+                    n(t.id),
+                    t.role.display_name()
+                ),
+                None => format!(
+                    "{}号（{}）放弃开枪",
+                    n(hunter.id),
+                    hunter.role.display_name()
+                ),
+            },
+        )),
+        GameEvent::PlayerDied { day, player, cause } => Some((
+            *day,
+            "died",
+            Some(n(player.id)),
+            format!(
+                "{}号（{}）出局：{}",
+                n(player.id),
+                player.role.display_name(),
+                death_text(*cause)
+            ),
+        )),
+        GameEvent::GameOver { outcome } => Some((
+            u32::MAX,
+            "over",
+            None,
+            match outcome {
+                Outcome::WerewolfWin { .. } => "狼人阵营获胜".to_string(),
+                Outcome::GoodWin => "好人阵营获胜".to_string(),
+            },
+        )),
     }
-    inner(event, secret_visible)
+}
+
+/// 对局流水落终端（上帝视角，含狼聊/夜刀）：操作员在 server 控制台看完整时间线
+pub fn log_new_events(engine: &GameEngine, from: usize) {
+    for event in engine.events().iter().skip(from) {
+        let Some((day, kind, _, text)) = render_event(event, true) else {
+            continue;
+        };
+        let day_label = if day == u32::MAX {
+            "终局".to_string()
+        } else {
+            format!("第{day}天")
+        };
+        tracing::info!("[对局] {day_label} [{kind}] {text}");
+    }
 }
 
 /// 夜晚动作的简短描述
@@ -297,7 +338,7 @@ fn action_text(action: &Action) -> String {
 }
 
 /// 死因描述
-fn death_text(cause: &DeathCause) -> &'static str {
+fn death_text(cause: DeathCause) -> &'static str {
     match cause {
         DeathCause::Slain => "夜间遇害",
         DeathCause::Poisoned => "中毒身亡",
@@ -319,6 +360,28 @@ fn role_code(role: Role) -> &'static str {
         Role::Knight => "knight",
         Role::Villager => "villager",
     }
+}
+
+/// 赛后 MVP 投票状态（仅该局有 MVP 流程时非空；手动终局 / stale 降级局为 null）
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct MvpDto {
+    /// 投票阶段：pending（投票中）→ done（已决出，选票从 db 读取）
+    pub phase: String,
+    /// 本场 MVP 选手名；pending 时为 null
+    pub winner: Option<String>,
+    /// 全部有效选票（done 后非空）
+    pub votes: Vec<MvpVoteDto>,
+}
+
+/// 单张 MVP 选票
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct MvpVoteDto {
+    /// 投票人
+    pub voter: String,
+    /// 被投人
+    pub candidate: String,
+    /// 投票理由（LLM 生成，可能为空）
+    pub reason: String,
 }
 
 impl GameStatusDto {
@@ -365,6 +428,9 @@ impl GameStatusDto {
                 None
             },
             seats: view.seats.clone(),
+            seat_roles: view.seat_roles.clone(),
+            stale: None,
+            mvp: None,
             events: Vec::new(),
         }
     }
@@ -377,12 +443,33 @@ impl GameStatusDto {
                 .iter()
                 .enumerate()
                 .filter_map(|(seq, event)| {
-                    render_event(event, true).map(|(day, kind, seat, text)| GameEventDto {
-                        seq,
-                        day,
-                        kind: kind.to_string(),
-                        seat,
-                        text,
+                    render_event(event, true).map(|(day, kind, seat, text)| {
+                        // 结构化事实：文本面向人眼，座位号/平票等数字面向前端逻辑
+                        let (deaths, tie, target) = match event {
+                            GameEvent::Dawn { deaths, .. } => {
+                                (deaths.iter().map(|d| d.player + 1).collect(), false, None)
+                            }
+                            GameEvent::VoteResolved { tie, exiled, .. } => {
+                                (Vec::new(), *tie, exiled.as_ref().map(|p| p.id + 1))
+                            }
+                            GameEvent::HunterShotFired { target, .. } => {
+                                (Vec::new(), false, target.as_ref().map(|t| t.id + 1))
+                            }
+                            GameEvent::KnightDuelResolved { loser, .. } => {
+                                (Vec::new(), false, Some(loser.id + 1))
+                            }
+                            _ => (Vec::new(), false, None),
+                        };
+                        GameEventDto {
+                            seq,
+                            day,
+                            kind: kind.to_string(),
+                            seat,
+                            text,
+                            deaths,
+                            tie,
+                            target,
+                        }
                     })
                 })
                 .collect();
@@ -394,6 +481,31 @@ impl GameStatusDto {
 /// 生命周期非法转移 → 409
 fn conflict(err: InvalidTransition) -> AppError {
     AppError::Conflict(err.to_string())
+}
+
+/// 槽位错误映射：`Config`（对局不存在或已失效）→ 404，非法转移 → 409
+fn slot_err(err: GameError) -> AppError {
+    match err {
+        GameError::Config(message) => AppError::NotFound(message),
+        GameError::Transition(transition) => conflict(transition),
+    }
+}
+
+/// 定位目标对局：`?room=`（db 该房间最近一局）优先，其次 `?game=`，都缺省用最近启动局
+fn locate_game(state: &AppState, query: &GameQuery) -> ApiResult<i64> {
+    if let Some(code) = &query.room {
+        let found =
+            crate::routes::rooms::db_query(state, |conn| db::latest_game_by_room(conn, code))?
+                .ok_or_else(|| AppError::NotFound(format!("房间 {code} 不存在")))?;
+        return Ok(found.game_id);
+    }
+    if let Some(game_id) = query.game {
+        return Ok(game_id);
+    }
+    state
+        .game
+        .latest()
+        .ok_or_else(|| ApiError(AppError::NotFound("没有进行中的对局".into())))
 }
 
 /// seed 缺省或 0 时用时钟纳秒生成（零依赖随机；同种子恒同发牌）
@@ -440,6 +552,8 @@ pub async fn start_game(
     let seed = resolve_seed(request.seed);
     let engine = GameEngine::new(board, seed)
         .map_err(|err| AppError::BadRequest(format!("板子配置非法：{err}")))?;
+    // 开局流水落终端（含 GameStarted；后续事件由 autoplay 每步喂入后追加输出）
+    log_new_events(&engine, 0);
     // 座位 → 选手名：请求指定优先，缺省取选手名册前 N 位
     let total = engine.total_players();
     let seats = request
@@ -451,13 +565,53 @@ pub async fn start_game(
                 .take(total as usize)
                 .collect()
         });
+    // 座位 → 真实身份显示名（引擎已发牌；开局前落库，好用 db 的 game_id 作槽位键）
+    let seat_roles: Vec<(u8, String)> = engine
+        .players()
+        .iter()
+        .enumerate()
+        .map(|(i, player)| {
+            (
+                u8::try_from(i + 1).unwrap_or(1),
+                player.role.display_name().to_string(),
+            )
+        })
+        .collect();
+    // 对局 id：绑房间时用 db games.id（观战 ?room= 靠它定位）；裸局用负数自增 id
+    let game_id = match request.room_code.as_deref() {
+        Some(code) => match crate::routes::rooms::bind_start(&state, code, &seat_roles) {
+            Ok((_, game_id)) => game_id,
+            Err(err) => {
+                tracing::warn!("房间 {code} 绑定失败（按裸局开局，无落库）：{}", err.0);
+                state.game.fresh_id()
+            }
+        },
+        None => state.game.fresh_id(),
+    };
     let view = state
         .game
-        .start(engine, board_name, seed, seats)
+        .start(game_id, engine, board_name, seed, seats)
         .map_err(conflict)?;
-    // 开局即启动自动推进（LLM 决策循环；配置缺失时规则兜底也能推完）
-    super::super::orchestr::autoplay::spawn(&state);
-    Ok(ApiResponse::ok(GameStatusDto::of(&view)))
+    // 开局即为本局启动专属自动推进（LLM 决策循环；配置缺失时规则兜底也能推完）
+    super::super::orchestr::autoplay::spawn(&state, game_id);
+    Ok(ApiResponse::ok(with_mvp(
+        &state,
+        game_id,
+        GameStatusDto::of(&view),
+    )))
+}
+
+/// 动作类响应（start/pause/resume/end）统一附加 mvp 状态（与 status 轮询同口径）
+fn with_mvp(state: &AppState, game_id: i64, mut dto: GameStatusDto) -> GameStatusDto {
+    dto.mvp = match dto.ended_reason.as_deref() {
+        Some("manual") => None,
+        _ => mvp_dto(
+            state,
+            game_id,
+            dto.status == "running" || dto.winner.is_some(),
+        ),
+    };
+    dto
 }
 
 /// POST /api/game/pause
@@ -473,9 +627,15 @@ pub async fn start_game(
 )]
 pub async fn pause_game(
     State(state): State<AppState>,
+    Query(query): Query<GameQuery>,
 ) -> ApiResult<Json<ApiResponse<GameStatusDto>>> {
-    let view = state.game.pause().map_err(conflict)?;
-    Ok(ApiResponse::ok(GameStatusDto::of(&view)))
+    let game_id = locate_game(&state, &query)?;
+    let view = state.game.pause(game_id).map_err(slot_err)?;
+    Ok(ApiResponse::ok(with_mvp(
+        &state,
+        game_id,
+        GameStatusDto::of(&view),
+    )))
 }
 
 /// POST /api/game/resume
@@ -491,11 +651,17 @@ pub async fn pause_game(
 )]
 pub async fn resume_game(
     State(state): State<AppState>,
+    Query(query): Query<GameQuery>,
 ) -> ApiResult<Json<ApiResponse<GameStatusDto>>> {
-    let view = state.game.resume().map_err(conflict)?;
-    // 恢复后重新拉起自动推进（pause 时循环已退出）
-    super::super::orchestr::autoplay::spawn(&state);
-    Ok(ApiResponse::ok(GameStatusDto::of(&view)))
+    let game_id = locate_game(&state, &query)?;
+    let view = state.game.resume(game_id).map_err(slot_err)?;
+    // 恢复后重新拉起本局的自动推进（pause 时循环已退出）
+    super::super::orchestr::autoplay::spawn(&state, game_id);
+    Ok(ApiResponse::ok(with_mvp(
+        &state,
+        game_id,
+        GameStatusDto::of(&view),
+    )))
 }
 
 /// POST /api/game/end
@@ -511,9 +677,15 @@ pub async fn resume_game(
 )]
 pub async fn end_game(
     State(state): State<AppState>,
+    Query(query): Query<GameQuery>,
 ) -> ApiResult<Json<ApiResponse<GameStatusDto>>> {
-    let view = state.game.end().map_err(conflict)?;
-    Ok(ApiResponse::ok(GameStatusDto::of(&view)))
+    let game_id = locate_game(&state, &query)?;
+    let view = state.game.end(game_id).map_err(slot_err)?;
+    Ok(ApiResponse::ok(with_mvp(
+        &state,
+        game_id,
+        GameStatusDto::of(&view),
+    )))
 }
 
 /// GET /api/game/status
@@ -528,27 +700,150 @@ pub async fn end_game(
 )]
 pub async fn get_status(
     State(state): State<AppState>,
+    Query(query): Query<GameQuery>,
 ) -> ApiResult<Json<ApiResponse<GameStatusDto>>> {
-    let view = state.game.view();
-    let engine = state.game.with_engine(|engine| engine.cloned());
-    Ok(ApiResponse::ok(
-        GameStatusDto::of(&view).with_events(engine.as_ref()),
-    ))
+    let game_id = locate_game(&state, &query)?;
+    // 槽内有该局：正常实时视图
+    if let Ok(view) = state.game.view(game_id) {
+        let engine = state
+            .game
+            .with_engine(game_id, |engine: Option<&GameEngine>| engine.cloned())
+            .unwrap_or_default();
+        let mut dto = GameStatusDto::of(&view).with_events(engine.as_ref());
+        // 手动终局没有 MVP 流程 → null；其余（running/自然结算）按投票状态组装
+        dto.mvp = match dto.ended_reason.as_deref() {
+            Some("manual") => None,
+            _ => mvp_dto(
+                &state,
+                game_id,
+                dto.status == "running" || dto.winner.is_some(),
+            ),
+        };
+        // 事件流水增量落库（含对局结束写胜负；幂等，轮询驱动）
+        crate::routes::rooms::flush_progress(&state, game_id, &dto);
+        return Ok(ApiResponse::ok(dto));
+    }
+    // 槽内无（服务器重启后的历史局）：从 db 组装 ended 降级结算
+    stale_status(&state, game_id)
+}
+
+/// 组装 status 的 `mvp` 字段（stale 降级局由调用方直接置 null）：
+/// - 投票已决出（状态机 Done）→ 从 db 读 MVP 与全部选票，`done`
+/// - 投票中（状态机 Pending，或胜负刚落库任务尚未登记）→ `pending`
+/// - 无 MVP 流程（投票任务未启动且非 running/自然结算）→ null
+fn mvp_dto(state: &AppState, game_id: i64, has_mvp_flow: bool) -> Option<MvpDto> {
+    let pending = MvpDto {
+        phase: "pending".to_string(),
+        winner: None,
+        votes: Vec::new(),
+    };
+    match state.game.mvp_phase(game_id) {
+        Some(state::MvpPhase::Pending) => return Some(pending),
+        Some(state::MvpPhase::Done) => {}
+        // 胜负落库后投票任务异步启动，存在短暂未登记窗口：有 MVP 流程的局按 pending
+        None if has_mvp_flow => return Some(pending),
+        None => return None,
+    }
+    let (mvp, votes) =
+        crate::routes::rooms::db_query(state, |conn| db::game_mvp_summary(conn, game_id))
+            .ok()
+            .flatten()?;
+    Some(MvpDto {
+        phase: "done".to_string(),
+        winner: mvp,
+        votes: votes
+            .into_iter()
+            .map(|(voter, candidate, reason)| MvpVoteDto {
+                voter,
+                candidate,
+                reason,
+            })
+            .collect(),
+    })
+}
+
+/// 服务器重启后的历史局降级：槽里已无该局，从 db 组装 ended 结算视图。
+/// 真实席位身份来自 room_roster，胜负来自 games.winner 列，中断标记与天数
+/// 来自 games.result JSON（清扫写入 {"stale":true,...}）。
+fn stale_status(state: &AppState, game_id: i64) -> ApiResult<Json<ApiResponse<GameStatusDto>>> {
+    let game = crate::routes::rooms::db_query(state, |conn| db::game_result(conn, game_id))?
+        .ok_or_else(|| AppError::NotFound("对局不存在或已失效".to_string()))?;
+    let roster =
+        crate::routes::rooms::db_query(state, |conn| db::room_roster_by_id(conn, game.room_id))?;
+    let events = crate::routes::rooms::db_query(state, |conn| db::game_events(conn, game_id))?;
+    let result: serde_json::Value = game
+        .result
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or(serde_json::Value::Null);
+    // 清扫把 winner 列写成 'stale'：对用户仍是无胜负的中断局
+    let stale = game.winner.as_deref() == Some("stale");
+    let winner = game.winner.clone().filter(|tag| tag != "stale");
+    let settled = winner.is_some();
+    let seats: Vec<String> = roster.iter().map(|(_, name, _)| name.clone()).collect();
+    let seat_roles: Vec<String> = roster
+        .iter()
+        .map(|(_, _, role)| role.clone().unwrap_or_else(|| "未知".to_string()))
+        .collect();
+    let total = u8::try_from(seats.len()).unwrap_or(u8::MAX);
+    let day = result
+        .get("day")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let dto = GameStatusDto {
+        status: "ended".to_string(),
+        board: Some(game.board_id),
+        seed: 0,
+        day: u32::try_from(day).unwrap_or(0),
+        phase: "settled".to_string(),
+        total,
+        alive_total: total,
+        roles: Vec::new(),
+        winner,
+        ended_reason: Some(if stale { "stale" } else { "settled" }.to_string()),
+        stale: Some(stale),
+        // stale 局无 MVP 投票流程；重启后的已结算历史局从 db 读选票
+        mvp: if stale {
+            None
+        } else {
+            mvp_dto(state, game_id, settled)
+        },
+        seats,
+        seat_roles,
+        events: events
+            .into_iter()
+            .map(|event| GameEventDto {
+                seq: usize::try_from(event.seq).unwrap_or(0),
+                day: event.day,
+                kind: event.kind,
+                seat: event.seat,
+                text: event.content,
+                deaths: Vec::new(),
+                tie: false,
+                target: None,
+            })
+            .collect(),
+    };
+    Ok(ApiResponse::ok(dto))
 }
 
 /// 选手名册（按座位序的默认名单）：来自 state 包的固定 12 人名单
 fn werewolf_roster_names() -> Vec<String> {
     state::ROSTER_PLAYERS
         .iter()
-        .map(|s| s.to_string())
+        .copied()
+        .map(str::to_string)
         .collect()
 }
 
-/// GET /api/game/memory 查询参数：玩家座位号（从 0 开始）
+/// GET /api/game/memory 查询参数：玩家座位号（从 0 开始）+ 对局定位
 #[derive(Deserialize, utoipa::ToSchema, utoipa::IntoParams)]
 pub struct MemoryQuery {
     /// 玩家座位号（0 起）
     pub player: u8,
+    /// 对局定位参数（room / game，同 [`GameQuery`]）
+    #[serde(flatten)]
+    pub locate: GameQuery,
 }
 
 /// 单条对局记忆的接口形态（通用记忆模型 + 对局领域标签）
@@ -612,18 +907,25 @@ pub async fn get_memory(
     State(state): State<AppState>,
     Query(query): Query<MemoryQuery>,
 ) -> ApiResult<Json<ApiResponse<GameMemoryDto>>> {
+    let game_id = locate_game(&state, &query.locate)?;
     // 已压缩记忆优先（跨请求存活，含摘要行）；否则从引擎重算
     let stored = state
         .game
-        .with_memories(|memories| memories.get(&query.player).cloned());
+        .with_memories(game_id, |memories| memories.get(&query.player).cloned())
+        .unwrap_or_default();
     let memory = match stored {
         Some(memory) => memory,
-        None => state.game.with_engine(|engine| {
-            let engine =
-                engine.ok_or_else(|| AppError::Conflict("当前没有进行中的对局".to_string()))?;
-            crate::orchestr::memory::recall(engine, query.player)
-                .map_err(|err| AppError::BadRequest(format!("非法座位：{err}")))
-        })?,
+        None => match state.game.with_engine(game_id, |engine| {
+            engine
+                .ok_or_else(|| AppError::Conflict("当前没有进行中的对局".to_string()))
+                .and_then(|engine| {
+                    crate::orchestr::memory::recall(engine, query.player)
+                        .map_err(|err| AppError::BadRequest(format!("非法座位：{err}")))
+                })
+        }) {
+            Ok(recalled) => recalled?,
+            Err(err) => return Err(ApiError(slot_err(err))),
+        },
     };
     Ok(ApiResponse::ok(GameMemoryDto::of(&memory)))
 }
@@ -648,16 +950,8 @@ pub struct MemoryCompactDto {
     pub summary: Option<String>,
 }
 
-/// AgentError → AppError：配置/请求问题 400，上游与链路问题 503
-fn agent_error(err: agent::AgentError) -> AppError {
-    match err {
-        agent::AgentError::Config(msg) | agent::AgentError::InvalidRequest(msg) => {
-            AppError::BadRequest(msg)
-        }
-        _ => AppError::ServiceUnavailable,
-    }
-}
-
+/// AgentError 的映射统一走 `From<AgentError> for AppError`
+/// （error/app_error.rs：客户端输入 400，上游/链路 503，其余 500）
 /// POST /api/game/memory/compact：记忆过长时调 LLM 压缩老段为摘要。
 ///
 /// 编排链：引擎重算记忆 → [`memory::AgentMemory::compaction_plan`] 划分
@@ -672,24 +966,35 @@ fn agent_error(err: agent::AgentError) -> AppError {
     request_body = MemoryCompactRequest,
     responses(
         (status = 200, description = "压缩完成（或无需压缩）", body = ApiResponse<MemoryCompactDto>),
-        (status = 400, description = "座位号越界 / agent 未配置 API Key", body = ApiResponse<String>),
+        (status = 400, description = "座位号越界", body = ApiResponse<String>),
         (status = 409, description = "当前没有进行中的对局", body = ApiResponse<String>),
-        (status = 500, description = "模型返回空摘要或压缩应用失败", body = ApiResponse<String>),
+        (status = 500, description = "agent 配置缺失 / 模型返回空摘要 / 压缩应用失败", body = ApiResponse<String>),
         (status = 503, description = "上游模型不可用（网络 / 非 adhere 2xx / 流中断）", body = ApiResponse<String>)
     )
 )]
 pub async fn compact_memory(
     State(state): State<AppState>,
+    query: Query<GameQuery>,
     Json(request): Json<MemoryCompactRequest>,
 ) -> ApiResult<Json<ApiResponse<MemoryCompactDto>>> {
+    let target = GameQuery {
+        room: query.room.clone(),
+        game: query.game,
+    };
+    let game_id = locate_game(&state, &target)?;
     // 与 get_memory 一致的缺省窗口：保留最近 30 条原文
     let keep_recent = request.keep_recent.unwrap_or(30);
-    let mut memory = state.game.with_engine(|engine| {
-        let engine =
-            engine.ok_or_else(|| AppError::Conflict("当前没有进行中的对局".to_string()))?;
-        crate::orchestr::memory::recall(engine, request.player)
-            .map_err(|err| AppError::BadRequest(format!("非法座位：{err}")))
-    })?;
+    let mut memory = match state.game.with_engine(game_id, |engine| {
+        engine
+            .ok_or_else(|| AppError::Conflict("当前没有进行中的对局".to_string()))
+            .and_then(|engine| {
+                crate::orchestr::memory::recall(engine, request.player)
+                    .map_err(|err| AppError::BadRequest(format!("非法座位：{err}")))
+            })
+    }) {
+        Ok(recalled) => recalled?,
+        Err(err) => return Err(ApiError(slot_err(err))),
+    };
 
     // 未超窗：无需压缩，不调模型
     let Some(plan) = memory.compaction_plan(keep_recent) else {
@@ -707,9 +1012,9 @@ pub async fn compact_memory(
         messages: crate::orchestr::memory::compaction_messages(&plan),
         thinking: None,
     };
-    let mut stream = provider.chat_stream(chat).await.map_err(agent_error)?;
+    let mut stream = provider.chat_stream(chat).await?;
     let mut summary = String::new();
-    while let Some(event) = stream.next_event().await.map_err(agent_error)? {
+    while let Some(event) = stream.next_event().await? {
         if let agent::event::AgentEvent::TextDelta { delta } = event {
             summary.push_str(&delta);
         }
@@ -727,7 +1032,8 @@ pub async fn compact_memory(
     let summary = memory.entries[0].text.clone();
     state
         .game
-        .with_memories(|memories| memories.insert(request.player, memory));
+        .with_memories(game_id, |memories| memories.insert(request.player, memory))
+        .map_err(slot_err)?;
     Ok(ApiResponse::ok(MemoryCompactDto {
         compacted: true,
         entries,
@@ -792,11 +1098,10 @@ mod tests {
         let state = test_state();
         let app = Router::new().merge(router()).with_state(state.clone());
 
-        // 初始状态：idle
+        // 初始无对局：无参定位 → 404「没有进行中的对局」（多槽位下不再有全局 idle）
         let (status, body) = send(app, "GET", "/api/game/status", None).await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["data"]["status"], "idle");
-        assert_eq!(body["data"]["phase"], "idle");
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["code"], 10004);
 
         // 开局（显式板子 + seed）
         let app = Router::new().merge(router()).with_state(state.clone());
@@ -822,13 +1127,13 @@ mod tests {
             "9 人局：狼/预/女/猎/民 5 类"
         );
 
-        // 进行中重复开局 → 409
+        // 重复开局：多槽位下每次 start 都是新裸局（latest 切到新局，不再 409）
         let app = Router::new().merge(router()).with_state(state.clone());
-        let (status, body) = send(app, "POST", "/api/game/start", Some(json!({}))).await;
-        assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(body["code"], 10005);
+        let (status, body) = send(app, "POST", "/api/game/start", Some(json!({"seed": 99}))).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["data"]["seed"], 99);
 
-        // 暂停 → 继续
+        // 暂停 → 继续（作用在最新局上）
         let app = Router::new().merge(router()).with_state(state.clone());
         let (status, body) = send(app, "POST", "/api/game/pause", None).await;
         assert_eq!(status, StatusCode::OK);
@@ -907,8 +1212,12 @@ mod tests {
         let state = test_state();
         let app = Router::new().merge(router()).with_state(state);
         let (status, body) = send(app, "GET", "/api/game/memory?player=0", None).await;
-        assert_eq!(status, StatusCode::CONFLICT, "未开局应 409");
-        assert_eq!(body["code"], 10005);
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "无对局应 404（多槽位定位失败）"
+        );
+        assert_eq!(body["code"], 10004);
     }
 
     #[tokio::test]
@@ -950,8 +1259,12 @@ mod tests {
             Some(json!({"player": 0})),
         )
         .await;
-        assert_eq!(status, StatusCode::CONFLICT, "未开局应 409");
-        assert_eq!(body["code"], 10005);
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "无对局应 404（多槽位定位失败）"
+        );
+        assert_eq!(body["code"], 10004);
     }
 
     #[tokio::test]
@@ -1001,5 +1314,135 @@ mod tests {
             reason: werewolf::WerewolfReason::GodsWiped,
         };
         assert_eq!(outcome_code(&wolf), "werewolf");
+    }
+
+    /// 内存库注入版 AppState（多房间定位 / 降级结算测试用）
+    fn test_state_with_db() -> AppState {
+        let state = AppState::new(AppConfig::default(), AgentState::ephemeral());
+        *state.db.lock().unwrap() = db::open_in_memory().ok();
+        state
+    }
+
+    fn seed_room(state: &AppState, code: &str) -> i64 {
+        let guard = state.db.lock().unwrap();
+        let conn = guard.as_ref().expect("内存库已注入");
+        db::create_room(
+            conn,
+            code,
+            "测试房",
+            "newbie_six",
+            &[
+                (1, "甲".into()),
+                (2, "乙".into()),
+                (3, "丙".into()),
+                (4, "丁".into()),
+                (5, "戊".into()),
+                (6, "己".into()),
+            ],
+        )
+        .expect("建房成功")
+    }
+
+    #[tokio::test]
+    async fn rooms_get_their_own_games() {
+        let state = test_state_with_db();
+        seed_room(&state, "AAAAAA");
+        seed_room(&state, "BBBBBB");
+        let app = || Router::new().merge(router()).with_state(state.clone());
+
+        // 双房并发开局：各自独立槽位，互不串局
+        let (_, first) = send(
+            app(),
+            "POST",
+            "/api/game/start",
+            Some(json!({"board": "newbie_six", "seed": 7, "room_code": "AAAAAA"})),
+        )
+        .await;
+        assert_eq!(first["data"]["seed"], 7, "{first}");
+        let (_, second) = send(
+            app(),
+            "POST",
+            "/api/game/start",
+            Some(json!({"board": "newbie_six", "seed": 8, "room_code": "BBBBBB"})),
+        )
+        .await;
+        assert_eq!(second["data"]["seed"], 8, "{second}");
+
+        // ?room= 各自定位到本房对局
+        let (_, s1) = send(app(), "GET", "/api/game/status?room=AAAAAA", None).await;
+        assert_eq!(s1["data"]["seed"], 7, "{s1}");
+        let (_, s2) = send(app(), "GET", "/api/game/status?room=BBBBBB", None).await;
+        assert_eq!(s2["data"]["seed"], 8, "{s2}");
+        // ?game= 直连对局 id（start 响应即该局 id）
+        let game_id = second["data"]["seed"].as_u64().unwrap_or(0); // 占位，下面用 room 推导
+        let _ = game_id;
+
+        // 无参 → 最近启动的局（BBBBBB）
+        let (_, latest) = send(app(), "GET", "/api/game/status", None).await;
+        assert_eq!(latest["data"]["seed"], 8, "{latest}");
+
+        // 暂停 A 不影响 B（?room= 定位各自生命周期）
+        let (_, paused) = send(app(), "POST", "/api/game/pause?room=AAAAAA", None).await;
+        assert_eq!(paused["data"]["status"], "paused", "{paused}");
+        let (_, running) = send(app(), "GET", "/api/game/status?room=BBBBBB", None).await;
+        assert_eq!(running["data"]["status"], "running", "{running}");
+    }
+
+    #[tokio::test]
+    async fn stale_room_returns_degraded_ended_status() {
+        let state = test_state_with_db();
+        let room_id = seed_room(&state, "CCCCCC");
+        // 模拟重启前的对局：身份已落库、事件已落库、未写胜负（槽里没有这局）
+        {
+            let guard = state.db.lock().unwrap();
+            let conn = guard.as_ref().expect("内存库已注入");
+            db::save_deal(conn, room_id, &[(1, "狼人".into()), (2, "预言家".into())]).unwrap();
+            let game_id = db::begin_game(conn, room_id, "newbie_six").unwrap();
+            db::append_events(
+                conn,
+                game_id,
+                &[db::EventRow {
+                    seq: 0,
+                    kind: "started".into(),
+                    seat: None,
+                    player: None,
+                    content: "开局：6 人".into(),
+                    day: 1,
+                }],
+            )
+            .unwrap();
+            // 开机清扫（bootstrap 同款）：未完局标记 stale
+            assert_eq!(db::finish_stale_games(conn).unwrap(), 1);
+        }
+
+        let app = Router::new().merge(router()).with_state(state);
+        let (status, body) = send(app, "GET", "/api/game/status?room=CCCCCC", None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["data"]["status"], "ended");
+        assert_eq!(body["data"]["stale"], true);
+        assert_eq!(body["data"]["ended_reason"], "stale");
+        assert_eq!(body["data"]["winner"], serde_json::Value::Null);
+        let seats = body["data"]["seats"].as_array().expect("seats");
+        assert_eq!(seats.len(), 6);
+        assert_eq!(seats[0], "甲");
+        let roles = body["data"]["seat_roles"].as_array().expect("roles");
+        assert_eq!(roles[0], "狼人", "降级结算用真实身份");
+        assert_eq!(roles[1], "预言家");
+        assert_eq!(body["data"]["events"].as_array().expect("events").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn locate_missing_room_or_game_is_404() {
+        let state = test_state_with_db();
+        let app = Router::new().merge(router()).with_state(state);
+        let (status, body) = send(app, "GET", "/api/game/status?room=ZZZZ99", None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(body["code"], 10004);
+
+        let state = test_state_with_db();
+        let app = Router::new().merge(router()).with_state(state);
+        let (status, body) = send(app, "GET", "/api/game/status?game=424242", None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        assert_eq!(body["data"]["message"], serde_json::Value::Null);
     }
 }

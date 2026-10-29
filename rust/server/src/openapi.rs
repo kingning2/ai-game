@@ -11,7 +11,7 @@ use axum::{Json, Router, routing::get};
 use state::AppState;
 use utoipa::OpenApi;
 
-use crate::routes::{agent_config, health, info, roster, tts, werewolf};
+use crate::routes::{agent_config, health, info, leaderboard, rooms, roster, tts, werewolf};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -27,6 +27,10 @@ use crate::routes::{agent_config, health, info, roster, tts, werewolf};
         agent_config::put_config,
         roster::get_roster,
         roster::put_roster_player,
+        rooms::create_room,
+        rooms::list_rooms,
+        rooms::get_room,
+        leaderboard::get_leaderboard,
         werewolf::start_game,
         werewolf::pause_game,
         werewolf::resume_game,
@@ -41,6 +45,7 @@ use crate::routes::{agent_config, health, info, roster, tts, werewolf};
     tags(
         (name = "agent", description = "agent 配置：设置页读写通道（Key 脱敏返回）"),
         (name = "roster", description = "选手级模型配置：12 名选手各自的 provider/模型/Key 覆盖，未覆盖字段继承全局 agent 配置"),
+        (name = "rooms", description = "狼人杀房间（SQLite 落库）：创建 / 列表 / 详情；发牌后详情含真实身份"),
         (name = "werewolf", description = "狼人杀对局控制面：开始 / 暂停 / 继续 / 结束 / 状态查询；所有 POST 成功与 GET 均返回最新 GameStatusDto"),
         (name = "tts", description = "本地语音合成： kokoro 模型装配（status/setup）与台词合成（speak，返回 audio/wav）"),
         (name = "system", description = "探活与服务元信息"),

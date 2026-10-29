@@ -18,6 +18,8 @@ export interface FetchRequestContext {
   init: RequestInit;
 }
 
+export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
 export interface FetchInterceptors {
   /** 请求拦截器 */
   request?: (ctx: FetchRequestContext) => FetchRequestContext | Promise<FetchRequestContext>;
@@ -48,7 +50,7 @@ export function createFetchClient(config: FetchClientConfig = {}): RequestClient
 
   /** 非 2xx：响应体若仍是约定包裹，按业务错误还原，否则按 http 错误 */
   async function toHttpError(response: Response): Promise<ApiError> {
-    const raw: unknown = await response.json().catch(() => undefined);
+    const raw: object | undefined = await response.json().catch(() => undefined);
     if (isEnvelope(raw)) {
       return new ApiError(raw.message || `HTTP ${response.status}`, {
         kind: 'business',
@@ -62,9 +64,9 @@ export function createFetchClient(config: FetchClientConfig = {}): RequestClient
     });
   }
 
-  async function parseJson(response: Response): Promise<unknown> {
+  async function parseJson(response: Response): Promise<object> {
     try {
-      return await response.json();
+      return (await response.json()) as object;
     } catch (error) {
       throw new ApiError('响应不是合法 JSON', {
         kind: 'parse',
@@ -74,7 +76,8 @@ export function createFetchClient(config: FetchClientConfig = {}): RequestClient
     }
   }
 
-  function normalize(error: unknown): unknown {
+  /** 归一化抛出的非 ApiError 异常（网络 / 取消 / 其余未知异常都包成 ApiError） */
+  function normalize(error: object): ApiError {
     if (error instanceof ApiError) return error;
     if (
       error instanceof DOMException &&
@@ -85,13 +88,16 @@ export function createFetchClient(config: FetchClientConfig = {}): RequestClient
     if (error instanceof TypeError) {
       return new ApiError('网络错误或请求被阻止', { kind: 'network', cause: error });
     }
-    return error;
+    return new ApiError(error instanceof Error ? error.message : '请求失败', {
+      kind: 'network',
+      cause: error,
+    });
   }
 
   async function request<T>(
-    method: string,
+    method: Method,
     url: string,
-    body: unknown,
+    body: object | undefined,
     options: RequestOptions,
   ): Promise<T> {
     let ctx: FetchRequestContext = {
@@ -126,7 +132,12 @@ export function createFetchClient(config: FetchClientConfig = {}): RequestClient
     }
   }
 
-  const run = <T>(method: string, url: string, body: unknown, options: RequestOptions = {}) =>
+  const run = <T>(
+    method: Method,
+    url: string,
+    body: object | undefined,
+    options: RequestOptions = {},
+  ) =>
     dedupe.run(dedupeKey(method, url, options.query), shouldDedupe(method, options), () =>
       request<T>(method, url, body, options),
     );

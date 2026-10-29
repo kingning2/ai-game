@@ -19,9 +19,9 @@ pub enum StateError {
         source: BoxError,
     },
 
-    /// 引用了名单外的资源（如未知选手）
-    #[error("资源不存在：{0}")]
-    NotFound(String),
+    /// 参数非法（空选手名 / 删除内置选手等），server 映射为 400
+    #[error("{0}")]
+    Invalid(String),
 }
 
 impl StateError {

@@ -3,7 +3,5 @@
 //! 一个工具一个文件，这里统一 re-export；各工具的说明见对应模块与 README.md。
 
 mod env;
-mod fallible;
 
 pub use env::{ConfigError, get_env, get_env_opt, get_env_parse};
-pub use fallible::FallibleExt;

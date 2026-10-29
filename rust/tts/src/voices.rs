@@ -4,6 +4,8 @@
 //! 12 名选手统一用 zm_009（通义千问）的音色；
 //! id/label 保留每个选手的身份映射，接口层仍按 id 或 label 查询。
 
+use std::sync::LazyLock;
+
 /// 一个音色的完整描述：引擎参数（sid/speed）+ 前端展示信息（id/label）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VoiceSpec {
@@ -17,87 +19,41 @@ pub struct VoiceSpec {
     pub speed: f32,
 }
 
-/// 全部内置音色（含主持人）
-pub const VOICES: &[VoiceSpec] = &[
-    VoiceSpec {
+/// 选手名单（id 顺序即引擎音色表顺序，label 与前端选手名对齐）
+const PLAYERS: [(&str, &str); 12] = [
+    ("zf_001", "豆包 Seed 2.1"),
+    ("zf_002", "Mistral Large 4"),
+    ("zf_003", "GLM-5.3"),
+    ("zf_017", "DeepSeek V4.1"),
+    ("zm_009", "Qwen3.8 Max"),
+    ("zf_018", "Gemini 4 Argon"),
+    ("zf_019", "Kimi K3.1 Pro"),
+    ("zm_010", "Claude Opus 5.5"),
+    ("zf_021", "MiniMax M3.1"),
+    ("zm_011", "Grok 4.7"),
+    ("zm_012", "GPT-6.1"),
+    ("zm_013", "MiMo V2.6"),
+];
+
+/// 选手统一音色参数：同一 sid（zm_009 音色）、常速
+const PLAYER_SID: i32 = 58;
+
+/// 全部内置音色（主持人置首）：选手 12 条 + 主持人 1 条
+pub static VOICES: LazyLock<Vec<VoiceSpec>> = LazyLock::new(|| {
+    std::iter::once(VoiceSpec {
         id: "zm_100",
         label: "主持人",
         sid: 62,
         speed: 0.95,
-    },
-    VoiceSpec {
-        id: "zf_001",
-        label: "豆包 Seed 2.1",
-        sid: 58,
+    })
+    .chain(PLAYERS.iter().map(|&(id, label)| VoiceSpec {
+        id,
+        label,
+        sid: PLAYER_SID,
         speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zf_002",
-        label: "Mistral Large 4",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zf_003",
-        label: "GLM-5.3",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zf_017",
-        label: "DeepSeek V4.1",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zm_009",
-        label: "Qwen3.8 Max",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zf_018",
-        label: "Gemini 4 Argon",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zf_019",
-        label: "Kimi K3.1 Pro",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zm_010",
-        label: "Claude Opus 5.5",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zf_021",
-        label: "MiniMax M3.1",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zm_011",
-        label: "Grok 4.7",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zm_012",
-        label: "GPT-6.1",
-        sid: 58,
-        speed: 1.0,
-    },
-    VoiceSpec {
-        id: "zm_013",
-        label: "MiMo V2.6",
-        sid: 58,
-        speed: 1.0,
-    },
-];
+    }))
+    .collect()
+});
 
 /// 按 id 查音色
 pub fn find(id: &str) -> Option<&'static VoiceSpec> {
@@ -120,7 +76,7 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), VOICES.len(), "音色 id 不得重复");
 
-        for voice in VOICES {
+        for voice in VOICES.iter() {
             assert!(
                 (0..103).contains(&voice.sid),
                 "sid {} 超出 kokoro 音色范围 0-102",
@@ -131,7 +87,7 @@ mod tests {
         // 主持人 = 用户选定的 Grok 4 音色（kokoro sid 62），选手 = 通义千问音色（sid 58）
         let host_sid = find_by_label("主持人").map(|v| v.sid);
         assert_eq!(host_sid, Some(62), "主持人应使用 Grok 音色（sid 62）");
-        for voice in VOICES {
+        for voice in VOICES.iter() {
             if voice.label != "主持人" {
                 assert_eq!(
                     Some(voice.sid),
@@ -166,7 +122,7 @@ mod tests {
 
     #[test]
     fn speeds_are_sane() {
-        for voice in VOICES {
+        for voice in VOICES.iter() {
             assert!(
                 (0.5..=2.0).contains(&voice.speed),
                 "{} 语速 {} 超界",

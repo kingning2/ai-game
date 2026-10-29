@@ -5,9 +5,19 @@ use crate::board::BoardConfig;
 use crate::engine::GameEngine;
 use crate::error::GameError;
 use crate::event::GameEvent;
-use crate::phase::{DeathCause, NightStage, Outcome, Phase, Role, Viewer};
+use crate::phase::{DeathCause, NightStage, Outcome, Phase, Viewer};
+use crate::role::Role;
 use crate::snapshot::GameSnapshot;
 use crate::summary::GameSummary;
+
+/// 指定身份的存活数（板子里没有该身份则返回 0）
+fn alive_of(summary: &GameSummary, role: Role) -> u8 {
+    summary
+        .roles
+        .iter()
+        .find(|r| r.role == role)
+        .map_or(0, |r| r.alive)
+}
 
 /// 测试用驱动器：按窗口自动喂动作，推进完整对局
 struct Driver(GameEngine);
@@ -40,35 +50,28 @@ impl Driver {
 
     /// 推进一晚（跳过板子里不存在的角色窗口）
     fn run_night(&mut self, plan: NightPlan) {
-        loop {
-            match self.0.phase().clone() {
-                Phase::Night { stage, .. } => {
-                    let (actor, _) = self.0.pending().expect("夜晚必有窗口");
-                    let result = match stage {
-                        NightStage::Guard => self
-                            .0
-                            .apply(actor, Action::GuardProtect { target: plan.guard }),
-                        NightStage::WerewolfChat => {
-                            self.0.apply(actor, Action::WolfChat { text: None })
-                        }
-                        NightStage::Werewolves => self
-                            .0
-                            .apply(actor, Action::WerewolfKill { target: plan.kill }),
-                        NightStage::Witch => self.0.apply(
-                            actor,
-                            Action::WitchAct {
-                                save: plan.save,
-                                poison: plan.poison,
-                            },
-                        ),
-                        NightStage::Seer => self
-                            .0
-                            .apply(actor, Action::SeerCheck { target: plan.check }),
-                    };
-                    result.unwrap_or_else(|err| panic!("夜晚动作失败（{stage:?}）: {err}"));
-                }
-                _ => break,
-            }
+        while let Phase::Night { stage, .. } = self.0.phase().clone() {
+            let (actor, _) = self.0.pending().expect("夜晚必有窗口");
+            let result = match stage {
+                NightStage::Guard => self
+                    .0
+                    .apply(actor, Action::GuardProtect { target: plan.guard }),
+                NightStage::WerewolfChat => self.0.apply(actor, Action::WolfChat { text: None }),
+                NightStage::Werewolves => self
+                    .0
+                    .apply(actor, Action::WerewolfKill { target: plan.kill }),
+                NightStage::Witch => self.0.apply(
+                    actor,
+                    Action::WitchAct {
+                        save: plan.save,
+                        poison: plan.poison,
+                    },
+                ),
+                NightStage::Seer => self
+                    .0
+                    .apply(actor, Action::SeerCheck { target: plan.check }),
+            };
+            result.unwrap_or_else(|err| panic!("夜晚动作失败（{stage:?}）: {err}"));
         }
     }
 
@@ -334,6 +337,7 @@ fn exiled_hunter_can_shoot() {
 #[test]
 fn idiot_survives_exile_but_loses_vote() {
     let mut board = BoardConfig::all_stars();
+    board.idiot = 1;
     board.werewolves = 2;
     let mut driver = Driver::new(board, 17);
     let idiot = driver.seat(Role::Idiot);
@@ -372,6 +376,7 @@ fn idiot_survives_exile_but_loses_vote() {
 #[test]
 fn idiot_dies_at_night_without_reveal() {
     let mut board = BoardConfig::all_stars();
+    board.idiot = 1;
     board.werewolves = 2;
     let mut driver = Driver::new(board, 19);
     let idiot = driver.seat(Role::Idiot);
@@ -401,6 +406,7 @@ fn idiot_dies_at_night_without_reveal() {
 #[test]
 fn knight_duel_kills_wolf_on_success() {
     let mut board = BoardConfig::all_stars();
+    board.knight = 1;
     board.werewolves = 2;
     let mut driver = Driver::new(board, 23);
     let wolf = driver.seat(Role::Werewolf);
@@ -435,6 +441,7 @@ fn knight_duel_kills_wolf_on_success() {
 #[test]
 fn knight_duel_failure_kills_knight() {
     let mut board = BoardConfig::all_stars();
+    board.knight = 1;
     board.werewolves = 2;
     let mut driver = Driver::new(board, 29);
     let knight = driver.seat(Role::Knight);
@@ -516,6 +523,48 @@ fn tie_vote_exiles_nobody() {
 // ---------- 胜负 ----------
 
 #[test]
+fn no_outcome_while_both_camps_have_members() {
+    // 屠边规则：开局满员（4 狼 / 4 神 / 4 民）不结算；夜刀 1 民也不结算
+    let mut driver = Driver::new(BoardConfig::all_stars(), 91);
+    let wolf = driver.seat(Role::Werewolf);
+    let villager = driver.seat(Role::Villager);
+    // 验人目标不能是预言家自己，选一个非自己存活座位
+    let seer = driver.seat(Role::Seer);
+    let check_target = if seer == 1 { 2 } else { 1 };
+    driver.run_night(NightPlan {
+        kill: villager,
+        check: check_target,
+        ..Default::default()
+    });
+    assert!(!driver.0.settled(), "只死 1 民不应分出胜负");
+    assert!(!matches!(driver.phase(), Phase::Settled { .. }));
+    let _ = wolf;
+}
+
+#[test]
+fn werewolf_wins_by_wiping_villagers() {
+    // 1 狼 + 1 预言家 + 1 民：夜刀唯一的民 → 屠民胜（神职尚存）
+    let mut driver = Driver::new(tiny_board(), 53);
+    let wolf = driver.seat(Role::Werewolf);
+    let villager = driver.seat(Role::Villager);
+    driver.run_night(NightPlan {
+        kill: villager,
+        check: wolf,
+        ..Default::default()
+    });
+    assert_eq!(
+        driver.phase(),
+        &Phase::Settled {
+            outcome: Outcome::WerewolfWin {
+                reason: crate::phase::WerewolfReason::VillagersWiped
+            }
+        },
+        "屠民：民 0 但神职尚存"
+    );
+    assert!(driver.0.settled());
+}
+
+#[test]
 fn werewolf_wins_by_wiping_gods() {
     let mut driver = Driver::new(tiny_board(), 37);
     let seer = driver.seat(Role::Seer);
@@ -533,7 +582,7 @@ fn werewolf_wins_by_wiping_gods() {
                 reason: crate::phase::WerewolfReason::GodsWiped
             }
         },
-        "屠神：狼 1 ≥ 神 0"
+        "屠神：神职全灭"
     );
     assert!(driver.0.settled());
 }
@@ -965,9 +1014,15 @@ fn summary_tracks_survivors_by_role() {
     let total_sum: u8 = opening.roles.iter().map(|r| r.total).sum();
     assert_eq!(total_sum, opening.total, "各身份总人数之和应等于座位数");
     assert_eq!(opening.alive_total, opening.total, "开局全员存活");
-    assert_eq!(opening.wolves_alive(), 2);
-    assert_eq!(opening.alive_of(Role::Seer), 1);
-    assert_eq!(opening.alive_of(Role::Guard), 1, "all_stars 含 1 守卫");
+    let alive_of = |s: &GameSummary, role: Role| {
+        s.roles
+            .iter()
+            .find(|r| r.role == role)
+            .map_or(0, |r| r.alive)
+    };
+    assert_eq!(alive_of(&opening, Role::Werewolf), 2);
+    assert_eq!(alive_of(&opening, Role::Seer), 1);
+    assert_eq!(alive_of(&opening, Role::Guard), 1, "all_stars 含 1 守卫");
 
     // 刀死 1 民：只有该身份存活数减 1，其余不变
     driver.run_night(NightPlan {
@@ -1003,9 +1058,9 @@ fn summary_absent_role_returns_zero() {
     // tiny_board（1狼1预1民）没有守卫/女巫等身份 → 查询返回 0
     let driver = Driver::new(tiny_board(), 101);
     let summary = GameSummary::of(&driver.0);
-    assert_eq!(summary.alive_of(Role::Guard), 0);
-    assert_eq!(summary.alive_of(Role::Witch), 0);
-    assert_eq!(summary.wolves_alive(), 1);
+    assert_eq!(alive_of(&summary, Role::Guard), 0);
+    assert_eq!(alive_of(&summary, Role::Witch), 0);
+    assert_eq!(alive_of(&summary, Role::Werewolf), 1);
     assert_eq!(summary.day, 1, "开局第一夜");
 }
 
@@ -1026,28 +1081,10 @@ fn profiles_cover_all_roles() {
     ] {
         let profile = crate::role::profile(role);
         assert_eq!(profile.role, role, "{role:?} 档案指向了错误角色");
-        assert_eq!(profile.name, role.display_name(), "{role:?} 展示名不一致");
-        assert_eq!(profile.camp, role.camp());
         assert!(!profile.description.is_empty());
         assert!(!profile.abilities.is_empty(), "{role:?} 应至少描述一条能力");
         assert!(!profile.win_condition.is_empty());
     }
-    assert_eq!(crate::role::all_profiles().len(), 8, "档案数应等于角色数");
-}
-
-#[test]
-fn profile_prompt_text_is_renderable() {
-    let seer = crate::role::profile(Role::Seer);
-    let text = seer.prompt_text();
-    assert!(text.contains("【预言家】"));
-    assert!(text.contains("你能做什么："));
-    assert!(text.contains("规则约束："));
-    assert!(text.contains("夜晚行动："));
-    assert!(text.contains("胜利条件："));
-
-    // 无夜晚技能的角色不渲染夜晚行动段
-    let villager = crate::role::profile(Role::Villager);
-    assert!(!villager.prompt_text().contains("夜晚行动："));
 }
 
 #[test]
@@ -1059,8 +1096,8 @@ fn profile_serde_round_trip() {
     assert!(json.contains("狼人"));
     assert!(json.contains("屠边"));
     assert_eq!(
-        serde_json::to_value(profile).unwrap()["name"],
-        serde_json::Value::String("狼人".into())
+        serde_json::to_value(profile).unwrap()["emoji"],
+        serde_json::Value::String("🐺".into())
     );
 }
 
@@ -1134,7 +1171,7 @@ fn wolf_council_rotates_by_seating() {
         .apply(wolf2, Action::WolfChat { text: None })
         .expect("沉默合法");
 
-    let (actor, kind) = driver.0.pending().expect("刀人窗口必有 actor");
+    let (_actor, kind) = driver.0.pending().expect("刀人窗口必有 actor");
     assert_eq!(kind, "夜晚行动");
     assert!(matches!(
         driver.phase(),
@@ -1201,115 +1238,3 @@ fn wolf_council_visibility_follows_camp() {
 }
 
 // ---------- 工具暴露（tools 包桥接） ----------
-
-use crate::tools::{EngineHandle, registry as tool_registry};
-use serde_json::json;
-
-#[test]
-fn tool_registry_exposes_all_windows_in_order() {
-    let engine = GameEngine::new(BoardConfig::nine_standard(), 42).unwrap();
-    let registry = tool_registry(EngineHandle::new(engine)).unwrap();
-
-    let names: Vec<_> = registry.definitions().into_iter().map(|d| d.name).collect();
-    assert_eq!(
-        names,
-        vec![
-            "guard_protect",
-            "wolf_chat",
-            "werewolf_kill",
-            "witch_act",
-            "seer_check",
-            "speech",
-            "knight_duel",
-            "vote",
-            "hunter_shot",
-        ]
-    );
-}
-
-#[test]
-fn tools_drive_night_and_return_incremental_events() {
-    let engine = GameEngine::new(BoardConfig::nine_standard(), 42).unwrap();
-    let handle = EngineHandle::new(engine);
-    let registry = tool_registry(handle.clone()).unwrap();
-
-    // 狼队夜聊：三狼依次沉默（9 人标准局无守卫，第一窗口是狼聊）
-    for _ in 0..3 {
-        let out = registry.execute("wolf_chat", json!({})).unwrap();
-        assert_eq!(out["window"], "狼人夜聊");
-    }
-
-    // 狼刀：出参带行动者 / 动作描述 / 增量事件
-    let out = registry
-        .execute("werewolf_kill", json!({ "target": 0 }))
-        .unwrap();
-    assert_eq!(out["window"], "夜晚行动");
-    assert_eq!(out["action"], "狼队袭击了 0 号");
-    assert!(out["events"].as_array().expect("增量事件数组").len() >= 1);
-
-    // 女巫按兵不动 → 预言家验人
-    registry
-        .execute("witch_act", json!({ "save": false }))
-        .unwrap();
-    let seer = handle.seat_of(Role::Seer).expect("9 人局必有预言家");
-    let target = (seer + 1) % handle.total_players();
-    let out = registry
-        .execute("seer_check", json!({ "target": target }))
-        .unwrap();
-    assert_eq!(out["action"], format!("预言家查验了 {target} 号"));
-}
-
-#[test]
-fn tools_propagate_domain_rules_as_execution_errors() {
-    let engine = GameEngine::new(BoardConfig::nine_standard(), 42).unwrap();
-    let handle = EngineHandle::new(engine);
-    let registry = tool_registry(handle.clone()).unwrap();
-
-    // 还在狼聊窗口就提前刀人：阶段不符
-    let err = registry
-        .execute("werewolf_kill", json!({ "target": 0 }))
-        .unwrap_err();
-    assert!(err.to_string().contains("不接受该动作"), "{err}");
-
-    // 女巫毒自己：领域规则拒绝
-    for _ in 0..3 {
-        registry.execute("wolf_chat", json!({})).unwrap();
-    }
-    registry
-        .execute("werewolf_kill", json!({ "target": 0 }))
-        .unwrap();
-    let witch = handle.seat_of(Role::Witch).expect("9 人局必有女巫");
-    let err = registry
-        .execute("witch_act", json!({ "save": false, "poison": witch }))
-        .unwrap_err();
-    assert!(err.to_string().contains("不能以自己为目标"), "{err}");
-}
-
-#[test]
-fn tools_reject_bad_arguments_before_touching_engine() {
-    let engine = GameEngine::new(BoardConfig::nine_standard(), 42).unwrap();
-    let registry = tool_registry(EngineHandle::new(engine)).unwrap();
-
-    // 狼刀缺 target
-    assert!(matches!(
-        registry.execute("werewolf_kill", json!({})),
-        Err(tools::ToolError::InvalidArguments { .. })
-    ));
-    // 发言空文本
-    assert!(matches!(
-        registry.execute("speech", json!({ "text": "" })),
-        Err(tools::ToolError::InvalidArguments { .. })
-    ));
-    // 入参不是对象
-    assert!(matches!(
-        registry.execute("vote", json!([0])),
-        Err(tools::ToolError::InvalidArguments { .. })
-    ));
-    // 参数坏了引擎不能被推进：第一个窗口仍是狼聊（三狼依次沉默后进刀人）
-    let engine2 = GameEngine::new(BoardConfig::nine_standard(), 42).unwrap();
-    let handle2 = EngineHandle::new(engine2);
-    let out = handle2
-        .run("wolf_chat", Action::WolfChat { text: None })
-        .unwrap();
-    assert_eq!(out["window"], "狼人夜聊");
-}

@@ -1,5 +1,6 @@
 import {
   Button,
+  NavBar,
   SettingsPanel,
   Spinner,
   type AgentSettingsDraft,
@@ -76,54 +77,59 @@ export function SettingsPage({ onBack, onOpenRoster, className }: SettingsPagePr
   }
 
   return (
-    <div className={`min-h-dvh bg-secondary-background ${className ?? ''}`}>
-      <header className="sticky top-0 z-40 border-b border-separator bg-secondary-background">
-        <div className="mx-auto flex h-14 w-full max-w-md items-center px-6">
+    <div className={`flex h-dvh flex-col overflow-hidden bg-grouped-background ${className ?? ''}`}>
+      <NavBar
+        leading={
           <Button variant="plain" size="sm" onClick={onBack}>
             ‹ 返回大厅
           </Button>
-          <span className="flex-1 text-center text-sm font-semibold text-label">AI 设置</span>
-          {onOpenRoster ? (
-            <Button variant="plain" size="sm" onClick={onOpenRoster} className="w-20">
+        }
+        title="AI 设置"
+        trailing={
+          onOpenRoster ? (
+            <Button variant="plain" size="sm" onClick={onOpenRoster}>
               选手模型
             </Button>
           ) : (
             <span className="w-20" aria-hidden />
+          )
+        }
+      />
+      {/* 内容区：页面唯一滚动方（app frame 铁律，见 rules/web/app-design.md §3） */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-md flex-col gap-3 px-6 py-8">
+          <p className="text-xs leading-relaxed text-secondary-label">
+            配置对全部游戏生效：Agent 决策、主持人播报、记忆压缩共用同一套模型配置。API Key
+            保存在服务端，仅脱敏回显。
+          </p>
+          {error && !value ? (
+            <p className="text-sm text-red" role="alert">
+              {error}
+            </p>
+          ) : null}
+          {!value || !draft ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-secondary-label">
+              <Spinner size="sm" /> 加载中…
+            </div>
+          ) : (
+            <>
+              <SettingsPanel
+                value={value}
+                draft={draft}
+                onDraftChange={(next) => {
+                  setSaved(false);
+                  setDraft(next);
+                }}
+                onSave={(next) => {
+                  void handleSave(next);
+                }}
+                saving={saving}
+                error={error}
+              />
+              {saved && <output className="text-xs text-green">已保存，新配置即时生效</output>}
+            </>
           )}
         </div>
-      </header>
-      <div className="mx-auto flex max-w-md flex-col gap-3 px-6 py-8">
-        <p className="text-xs leading-relaxed text-secondary-label">
-          配置对全部游戏生效：Agent 决策、主持人播报、记忆压缩共用同一套模型配置。API Key
-          保存在服务端，仅脱敏回显。
-        </p>
-        {error && !value ? (
-          <p className="text-sm text-red" role="alert">
-            {error}
-          </p>
-        ) : null}
-        {!value || !draft ? (
-          <div className="flex items-center justify-center gap-2 py-12 text-sm text-secondary-label">
-            <Spinner size="sm" /> 加载中…
-          </div>
-        ) : (
-          <>
-            <SettingsPanel
-              value={value}
-              draft={draft}
-              onDraftChange={(next) => {
-                setSaved(false);
-                setDraft(next);
-              }}
-              onSave={(next) => {
-                void handleSave(next);
-              }}
-              saving={saving}
-              error={error}
-            />
-            {saved && <output className="text-xs text-green">已保存，新配置即时生效</output>}
-          </>
-        )}
       </div>
     </div>
   );

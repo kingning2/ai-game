@@ -16,9 +16,9 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use logging::warn;
 use serde::{Deserialize, Serialize};
 use state::AppState;
+use tracing::warn;
 use tts::voices;
 
 /// GET /api/tts/status 响应

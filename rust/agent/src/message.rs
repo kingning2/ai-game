@@ -67,11 +67,12 @@ impl ChatRequest {
     /// 公共校验：非空且至少一条 user/assistant（两家协议的硬性要求，
     /// 规则与文案统一在 [`AgentError::invalid_messages`]）
     pub fn validate(&self) -> AgentResult<()> {
+        // 空列表时 any() 必为 false，无需单独判空
         let has_turn = self
             .messages
             .iter()
             .any(|message| matches!(message.role, Role::User | Role::Assistant));
-        if self.messages.is_empty() || !has_turn {
+        if !has_turn {
             return Err(AgentError::invalid_messages());
         }
         Ok(())

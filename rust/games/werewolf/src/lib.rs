@@ -1,4 +1,5 @@
 //! `game` —— 狼人杀游戏引擎：纯逻辑状态机，零 IO。
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //!
 //! ## 定位
 //!
@@ -50,12 +51,6 @@
 //!
 //! 服务端接线（房间管理 / SSE 快照推送）与 LLM 决策层后续分层接入；
 //! 对齐的前端类型见 `apps/web/src/werewolf/types.ts`（`GameSnapshot` 观战页契约）。
-//!
-//! ## 工具暴露
-//!
-//! [`tools`] 模块把每个行动窗口包成可被 LLM 调用的工具
-//! （基类契约来自 workspace 的 `tools` 包）：狼刀 / 女巫用药 / 预言家验人 /
-//! 发言 / 投票等，用 [`tools::registry`] 一次拿齐。
 
 pub mod action;
 pub mod board;
@@ -67,15 +62,14 @@ pub mod player;
 pub mod role;
 pub mod snapshot;
 pub mod summary;
-pub mod tools;
 
 #[cfg(test)]
 mod tests;
 
 pub use action::Action;
-pub use board::{BoardConfig, BoardError};
+pub use board::BoardConfig;
 pub use engine::GameEngine;
-pub use error::GameError;
+pub use error::{BoardError, GameError};
 pub use event::{GameEvent, NightDeath};
 pub use phase::{
     CheckRecord, CheckResult, DeathCause, NightStage, Outcome, Phase, PlayerId, PlayerRole, Viewer,

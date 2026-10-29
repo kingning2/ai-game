@@ -63,14 +63,14 @@ export function WerewolfPage({ onBack }: { onBack?: () => void }) {
   useAutoSpeak(phase, engine, hostMessage, speaker?.name, currentSpeaker?.text);
 
   return (
-    <div className="relative h-dvh">
+    <div className="relative h-dvh overflow-hidden">
       {/* 演示控制：返回大厅 / 语音引擎 / 语音开关 */}
       <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
-            className="rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white shadow-card backdrop-blur-sm hover:bg-black/70"
+            className="rounded-full bg-arena/50 px-3 py-1.5 text-xs font-medium text-arena-text shadow-card backdrop-blur-sm hover:bg-arena/70"
           >
             ← 返回大厅
           </button>
@@ -78,7 +78,7 @@ export function WerewolfPage({ onBack }: { onBack?: () => void }) {
         <button
           type="button"
           onClick={() => setEngine(engine === 'doubao' ? 'local' : 'doubao')}
-          className="rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white shadow-card backdrop-blur-sm hover:bg-black/70"
+          className="rounded-full bg-arena/50 px-3 py-1.5 text-xs font-medium text-arena-text shadow-card backdrop-blur-sm hover:bg-arena/70"
         >
           {engine === 'doubao' ? '🫘 豆包音色' : '📦 本地音色'}
         </button>
@@ -86,8 +86,8 @@ export function WerewolfPage({ onBack }: { onBack?: () => void }) {
           type="button"
           onClick={() => setMemoryOpen((open) => !open)}
           className={cn(
-            'rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white shadow-card backdrop-blur-sm',
-            'hover:bg-black/70',
+            'rounded-full bg-arena/50 px-3 py-1.5 text-xs font-medium text-arena-text shadow-card backdrop-blur-sm',
+            'hover:bg-arena/70',
           )}
         >
           {memoryOpen ? '🧠 收起记忆' : '🧠 玩家记忆'}
@@ -96,8 +96,8 @@ export function WerewolfPage({ onBack }: { onBack?: () => void }) {
           type="button"
           onClick={toggle}
           className={cn(
-            'rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white shadow-card backdrop-blur-sm',
-            'hover:bg-black/70',
+            'rounded-full bg-arena/50 px-3 py-1.5 text-xs font-medium text-arena-text shadow-card backdrop-blur-sm',
+            'hover:bg-arena/70',
           )}
         >
           {voiceLabel(phase, engine)}

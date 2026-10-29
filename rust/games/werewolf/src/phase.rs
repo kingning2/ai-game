@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub use crate::role::Role;
+use crate::role::Role;
 
 /// 对局阶段。状态机流向：
 /// `Night → DaySpeech → (KnightDuel?) → DayVote → (HunterShot?)* → Night …`
@@ -44,7 +44,7 @@ impl Phase {
     }
 }
 
-/// 夜晚行动顺序（与 [`Role::night_order`](crate::role::Role::night_order) 对齐）。
+/// 夜晚行动顺序（守卫 → 狼人 → 女巫 → 预言家）。
 /// 狼队先在 [`NightStage::WerewolfChat`] 按座位序耳语商量，
 /// 再共享一次刀（[`NightStage::Werewolves`]，引擎只收一个决定）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

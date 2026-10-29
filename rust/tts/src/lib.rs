@@ -1,4 +1,5 @@
 //! 本地语音合成：kokoro 模型进程内推理。
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 //!
 //! - [`assets`]：模型包下载/解包（缓存于本地数据目录，全部完成后离线可用）
 //! - [`voices`]：12 名选手 + 主持人的音色表

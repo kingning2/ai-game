@@ -56,7 +56,7 @@ impl BoardConfig {
         }
     }
 
-    /// 全角色 14 人局：4 狼 + 全部六神 + 4 民（展示全角色夜景的板子）
+    /// 全明星 12 人局：4 狼 + 预言家/女巫/守卫/猎人 + 4 民（与前端「全明星 12 人局」对齐）
     pub fn all_stars() -> Self {
         Self {
             werewolves: 4,
@@ -65,8 +65,8 @@ impl BoardConfig {
             witch: 1,
             guard: 1,
             hunter: 1,
-            idiot: 1,
-            knight: 1,
+            idiot: 0,
+            knight: 0,
         }
     }
 
@@ -140,8 +140,7 @@ impl BoardConfig {
     }
 }
 
-/// 板子配置错误（定义归 error 包，game 内 re-export 保持 `board::BoardError` 路径兼容）
-pub use crate::error::BoardError;
+use crate::error::BoardError;
 
 #[cfg(test)]
 mod tests {
@@ -150,7 +149,7 @@ mod tests {
     #[test]
     fn presets_match_expected_totals() {
         assert_eq!(BoardConfig::nine_standard().total(), 9);
-        assert_eq!(BoardConfig::all_stars().total(), 14);
+        assert_eq!(BoardConfig::all_stars().total(), 12);
         assert!(BoardConfig::nine_standard().validate().is_ok());
         assert!(BoardConfig::all_stars().validate().is_ok());
     }
@@ -165,7 +164,8 @@ mod tests {
             *counts.entry(role).or_insert(0) += 1;
         }
         assert_eq!(counts[&Role::Werewolf], 4);
-        assert_eq!(counts[&Role::Knight], 1);
+        assert_eq!(counts.get(&Role::Knight), None);
+        assert_eq!(counts.get(&Role::Idiot), None);
     }
 
     #[test]

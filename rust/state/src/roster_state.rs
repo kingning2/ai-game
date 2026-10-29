@@ -54,6 +54,9 @@ pub struct PlayerOverride {
     pub max_tokens: Option<u32>,
     /// 思考模式；None = 继承全局（全局默认不发参数）
     pub thinking: Option<ThinkingMode>,
+    /// 自定义头像（emoji 或图片 URL）；None = 无自定义。
+    /// 内置 12 人的头像由前端静态资源提供，此字段主要供自建选手用
+    pub avatar: Option<String>,
 }
 
 impl PlayerOverride {
@@ -63,6 +66,7 @@ impl PlayerOverride {
             && self.anthropic.as_ref().is_none_or(SettingsPatch::is_empty)
             && self.max_tokens.is_none()
             && self.thinking.is_none()
+            && self.avatar.is_none()
     }
 }
 
@@ -142,14 +146,15 @@ impl RosterState {
     }
 
     /// 设置/清除选手覆盖。`None` 或全空覆盖 = 清除（跟随全局）。
-    /// 名单外选手一律 [`StateError::NotFound`](crate::error::StateError::NotFound)
+    /// 名单外选手视为自建选手直接入库（空名拒绝）
     pub fn set_override(
         &self,
         name: &str,
         player_override: Option<PlayerOverride>,
     ) -> Result<(), StateError> {
-        if !ROSTER_PLAYERS.contains(&name) {
-            return Err(StateError::NotFound(format!("未知选手：{name}")));
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(StateError::Invalid("选手名不能为空".to_string()));
         }
 
         let next = player_override.filter(|player_override| !player_override.is_empty());
@@ -157,11 +162,37 @@ impl RosterState {
         {
             let mut overrides = self.write();
             if next.is_some() {
-                overrides.insert(name.to_string(), next.clone().unwrap_or_default());
+                overrides.insert(name.to_string(), next.unwrap_or_default());
             } else {
                 overrides.remove(name);
             }
         }
+        self.persist()?;
+        Ok(())
+    }
+
+    /// 全员名单：内置 12 人在前，自建选手按名排序殿后
+    pub fn player_names(&self) -> Vec<String> {
+        let read = self.read();
+        let mut extras: Vec<String> = read
+            .keys()
+            .filter(|name| !ROSTER_PLAYERS.contains(&name.as_str()))
+            .cloned()
+            .collect();
+        extras.sort();
+        ROSTER_PLAYERS
+            .iter()
+            .map(ToString::to_string)
+            .chain(extras)
+            .collect()
+    }
+
+    /// 删除自建选手（含覆盖与头像）；内置选手不可删
+    pub fn remove_player(&self, name: &str) -> Result<(), StateError> {
+        if ROSTER_PLAYERS.contains(&name) {
+            return Err(StateError::Invalid(format!("内置选手不可删除：{name}")));
+        }
+        self.write().remove(name);
         self.persist()?;
         Ok(())
     }
@@ -214,13 +245,13 @@ impl RosterState {
     fn read(&self) -> std::sync::RwLockReadGuard<'_, HashMap<String, PlayerOverride>> {
         self.overrides
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn write(&self) -> std::sync::RwLockWriteGuard<'_, HashMap<String, PlayerOverride>> {
         self.overrides
             .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -317,12 +348,41 @@ mod tests {
     }
 
     #[test]
-    fn unknown_player_is_rejected() {
+    fn custom_player_can_be_created_and_removed() {
         let roster = RosterState::ephemeral();
+        roster
+            .set_override(
+                "神秘嘉宾",
+                Some(PlayerOverride {
+                    avatar: Some("🎭".into()),
+                    openai: Some(SettingsPatch {
+                        model: Some("doubao-seed-2-1-pro".into()),
+                        ..SettingsPatch::default()
+                    }),
+                    ..PlayerOverride::default()
+                }),
+            )
+            .unwrap();
+        // 自建选手进入名单，且排在内置 12 人之后
+        let names = roster.player_names();
+        assert_eq!(names.len(), 13);
+        assert_eq!(names.last().unwrap(), "神秘嘉宾");
+        assert_eq!(
+            roster.override_of("神秘嘉宾").unwrap().avatar.as_deref(),
+            Some("🎭")
+        );
+
+        // 空名拒绝
         let err = roster
-            .set_override("路人甲", Some(PlayerOverride::default()))
+            .set_override("  ", Some(PlayerOverride::default()))
             .unwrap_err();
-        assert!(matches!(err, StateError::NotFound(_)));
+        assert!(matches!(err, StateError::Invalid(_)));
+
+        // 内置选手不可删，自建可删
+        assert!(roster.remove_player("豆包 Seed 2.1").is_err());
+        roster.remove_player("神秘嘉宾").unwrap();
+        assert!(roster.override_of("神秘嘉宾").is_none());
+        assert_eq!(roster.player_names().len(), 12);
     }
 
     #[test]

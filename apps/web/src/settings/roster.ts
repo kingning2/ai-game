@@ -49,11 +49,15 @@ export type PlayerOverrideDto = {
   openai?: SettingsPatchDto;
   anthropic?: SettingsPatchDto;
   max_tokens?: number;
+  /** 自定义头像（emoji 或图片 URL）；缺省 = 无自定义 */
+  avatar?: string;
 };
 
 /** GET /api/roster 元素 */
 export type RosterPlayer = {
   name: string;
+  /** 自定义头像；null = 用静态资源/首字兑底 */
+  avatar: string | null;
   has_override: boolean;
   player_override: PlayerOverrideDto | null;
   effective: RosterEffective;
@@ -65,7 +69,7 @@ export async function fetchRoster(): Promise<RosterPlayer[]> {
   return unwrap<RosterPlayer[]>(response);
 }
 
-/** 保存单个选手的覆盖（字段缺省 = 继承全局；全空对象 = 清除覆盖回全局） */
+/** 保存单个选手的覆盖（字段缺省 = 继承全局；全空对象 = 清除覆盖回全局）。名单外选手自动创建 */
 export async function putPlayerOverride(
   name: string,
   override: PlayerOverrideDto,
@@ -76,4 +80,12 @@ export async function putPlayerOverride(
     body: JSON.stringify(override),
   });
   return unwrap<RosterPlayer>(response);
+}
+
+/** 删除自建选手（内置选手 400），返回删除后的全员列表 */
+export async function deletePlayer(name: string): Promise<RosterPlayer[]> {
+  const response = await fetch(`/api/roster/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+  return unwrap<RosterPlayer[]>(response);
 }

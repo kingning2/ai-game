@@ -29,6 +29,8 @@ pub struct AppState {
     pub game: Arc<GameState>,
     /// 本地语音合成（kokoro 模型进程内推理；狼人杀观战朗读台词）
     pub tts: Arc<tts::TtsService>,
+    /// SQLite 持久化（房间 / 对局结果 / 事件流水；`None` = 库不可用已降级）
+    pub db: Arc<std::sync::Mutex<Option<rusqlite::Connection>>>,
     /// 全局请求统计（自动采集）
     pub stats: Stats,
     /// 服务启动时刻（用于 /api/info 的运行时长）
@@ -48,6 +50,7 @@ impl AppState {
             roster: Arc::new(roster),
             game: Arc::new(GameState::new()),
             tts: Arc::new(tts::TtsService::with_default_dir()),
+            db: Arc::new(std::sync::Mutex::new(open_db(None))),
             stats: Stats::default(),
             started_at: Instant::now(),
         }
@@ -56,6 +59,32 @@ impl AppState {
     /// 服务已运行秒数
     pub fn uptime_secs(&self) -> u64 {
         self.started_at.elapsed().as_secs()
+    }
+}
+
+/// 打开 SQLite：默认 `%APPDATA%/agent-packages/werewolf.db`；
+/// 文件库不可用降级内存库（重启丢数据，warn 提示）；
+/// 测试可注入内存库（`open_db(Some(":memory:"))`）。
+fn open_db(path: Option<&str>) -> Option<rusqlite::Connection> {
+    if let Some(p) = path {
+        return db::open(p).ok();
+    }
+    let file = dirs::config_dir().map(|dir| dir.join("agent-packages").join("werewolf.db"));
+    if let Some(conn) = file
+        .as_ref()
+        .and_then(|p| db::open(&p.to_string_lossy()).ok())
+    {
+        return Some(conn);
+    }
+    match db::open_in_memory() {
+        Ok(conn) => {
+            tracing::warn!("SQLite 文件库不可用，已降级为内存库（重启后房间数据丢失）");
+            Some(conn)
+        }
+        Err(err) => {
+            tracing::error!("内存库也不可用，持久化已禁用：{err}");
+            None
+        }
     }
 }
 

@@ -1,9 +1,8 @@
 use serde::Deserialize;
-use utils::FallibleExt;
 
 use crate::event::{AgentEvent, StopReason, Usage};
 use crate::message::{ChatMessage, ChatRequest, Role};
-use crate::provider::{ChatStreamFuture, ProviderSettings};
+use crate::provider::{ChatStreamFuture, ProviderSettings, http_client};
 use crate::stream::{ChatStream, FrameDecoder, StreamState, ensure_success};
 use crate::{AgentError, AgentResult};
 
@@ -24,12 +23,8 @@ pub struct AnthropicProvider {
 impl AnthropicProvider {
     /// `Err` 仅在 reqwest Client 构建失败时出现（TLS 后端初始化等环境问题）
     pub fn new(settings: ProviderSettings, max_tokens: u32) -> AgentResult<Self> {
-        let client = reqwest::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .build()
-            .wrap_err(|message| AgentError::Config(format!("HTTP 客户端构建失败：{message}")))?;
         Ok(Self {
-            client,
+            client: http_client()?,
             settings,
             max_tokens,
         })
