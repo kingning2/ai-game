@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties, type KeyboardEvent } from 'react';
 import { cn } from '../cn';
 
 export type SegmentedOption<T extends string> = {
@@ -20,6 +20,7 @@ export type SegmentedControlProps<T extends string> = {
  * - 选中态是一个绝对定位的白底 thumb，随选择 spring 滑动（过冲回弹，iOS 手感核心），
  *   不再是每个选项各自切换背景的跳变
  * - thumb 位移走 CSS 变量 + rtl 变体，方向自适应；文字颜色仍即时切换
+ * - WAI-ARIA radiogroup：roving tabindex（只有选中项可 Tab 到）+ 方向键切换并跟随焦点
  */
 export function SegmentedControl<T extends string>({
   options,
@@ -32,17 +33,33 @@ export function SegmentedControl<T extends string>({
     0,
     options.findIndex((option) => option.value === value),
   );
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // 方向键在选项间移动并同步选中（循环），焦点跟随选中项
+  const onGroupKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const forward = e.key === 'ArrowRight' || e.key === 'ArrowDown';
+    const backward = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
+    if (!forward && !backward) return;
+    e.preventDefault();
+    const delta = forward ? 1 : -1;
+    const next = (selectedIndex + delta + options.length) % options.length;
+    const option = options[next];
+    if (!option) return;
+    onChange(option.value);
+    optionRefs.current[next]?.focus();
+  };
 
   return (
     <div
       role="radiogroup"
+      onKeyDown={onGroupKeyDown}
       className={cn('relative inline-flex rounded-lg bg-fill p-0.5', className)}
       {...rest}
     >
       <span
         aria-hidden
         className={cn(
-          'absolute inset-y-0.5 start-0.5 z-0 rounded-md bg-secondary-grouped-background shadow-sm',
+          'absolute inset-y-0.5 start-0.5 z-0 rounded-md bg-knob shadow-card',
           'transition-transform duration-300 ease-spring',
           'translate-x-[calc(var(--seg-index)*100%)] rtl:-translate-x-[calc(var(--seg-index)*100%)]',
         )}
@@ -53,7 +70,7 @@ export function SegmentedControl<T extends string>({
           } as CSSProperties
         }
       />
-      {options.map((option) => {
+      {options.map((option, index) => {
         const selected = option.value === value;
         return (
           <button
@@ -61,9 +78,13 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="radio"
             aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            ref={(el) => {
+              optionRefs.current[index] = el;
+            }}
             onClick={() => onChange(option.value)}
             className={cn(
-              'relative z-10 flex-1 rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap',
+              'relative z-10 flex-1 cursor-pointer rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap',
               'transition-colors duration-200 ease-out active:scale-[0.97]',
               selected ? 'text-label' : 'text-secondary-label hover:text-label',
             )}

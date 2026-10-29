@@ -65,6 +65,18 @@
 
   /* 材质底色：配合 backdrop-blur-xl backdrop-saturate-150 做半透明浮动层 */
   --color-material: var(--material);
+
+  /* 彩色填充（tint / destructive / red / blue…）上的文字，恒白不随主题翻转 */
+  --color-on-accent: var(--on-accent);
+
+  /* 控件滑动 thumb（SegmentedControl / Slider）：恒白，保证明暗两套下与轨道的高对比 */
+  --color-knob: var(--knob);
+
+  /* 舞台（WerewolfStage 固定视觉场景）：背景渐变两锚点 + 亮字 / 亮底深字 */
+  --color-stage-from: var(--stage-from);
+  --color-stage-to: var(--stage-to);
+  --color-stage-ink: var(--stage-ink);
+  --color-stage-ink-strong: var(--stage-ink-strong);
 }
 
 /* ---------------- 静态令牌 ---------------- */
@@ -79,6 +91,16 @@
   /* 阴影：iOS 原生界面靠分隔线与填充分层，web 卡片 / 浮层保留极轻投影 */
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
   --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 10px 24px -6px rgb(0 0 0 / 0.1);
+  --shadow-inset-highlight: inset 0 1px 0 0 rgb(255 255 255 / 0.06);
+
+  /* 舞台文字/图形投影（深色画面上的可读性保障，明暗恒定） */
+  --text-shadow-stage-name: 0 1px 2px rgb(0 0 0 / 0.95), 0 0 6px rgb(0 0 0 / 0.75);
+  --drop-shadow-stage-cross: 0 2px 6px rgb(0 0 0 / 0.85);
+  --drop-shadow-stage-soft: 0 2px 4px rgb(0 0 0 / 0.2);
+  --drop-shadow-stage-title: 0 4px 12px rgb(0 0 0 / 0.35);
+
+  /* 舞台大标题展示字重（字重 ≤500 规则的 tokens 层例外，见 rules/web/ui-design.md） */
+  --font-weight-display: 900;
 }
 
 /* ---------------- 原始变量：浅色（默认） ---------------- */
@@ -106,6 +128,14 @@
   --system-gray-4: #d1d1d6;
   --system-gray-5: #e5e5ea;
   --system-gray-6: #f2f2f7;
+
+  /* 舞台与控件（明暗同值或按场景锚定） */
+  --on-accent: #ffffff;
+  --knob: #ffffff;
+  --stage-from: #f2f2f7;
+  --stage-to: #c7c7cc;
+  --stage-ink: #ffffff;
+  --stage-ink-strong: #000000;
 
   /* 文字层级 */
   --label: #000000;
@@ -164,6 +194,14 @@
   --system-gray-4: #3a3a3c;
   --system-gray-5: #2c2c2e;
   --system-gray-6: #1c1c1e;
+
+  /* 舞台与控件（明暗同值或按场景锚定；stage-from/to 保留原暗色舞台「上灰下黑」渐变） */
+  --on-accent: #ffffff;
+  --knob: #ffffff;
+  --stage-from: #636366;
+  --stage-to: #000000;
+  --stage-ink: #ffffff;
+  --stage-ink-strong: #000000;
 
   --label: #ffffff;
   --secondary-label: rgb(235 235 245 / 0.6);

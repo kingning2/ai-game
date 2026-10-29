@@ -47,7 +47,8 @@ export function ListItem({
       onClick={onClick}
       className={cn(
         'flex w-full items-center gap-3 px-4 py-3 text-start text-sm',
-        onClick && 'transition duration-150 ease-out hover:bg-quaternary-fill active:scale-[0.98]',
+        onClick &&
+          'cursor-pointer transition duration-150 ease-out hover:bg-quaternary-fill active:scale-[0.98] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-tint',
         className,
       )}
       {...rest}

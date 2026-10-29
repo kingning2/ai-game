@@ -5,8 +5,8 @@ import { cn } from '../cn';
 export type WerewolfRoleTone = 'wolf' | 'good';
 
 const toneClass: Record<WerewolfRoleTone, string> = {
-  wolf: 'bg-red text-white',
-  good: 'bg-yellow/90 text-black',
+  wolf: 'bg-red text-on-accent',
+  good: 'bg-yellow/90 text-stage-ink-strong',
 };
 
 export type RoleBadgeProps = HTMLAttributes<HTMLSpanElement> & {
@@ -21,7 +21,7 @@ export function RoleBadge({ label, tone = 'good', className, ...props }: RoleBad
     <span
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-md px-0.5 py-1.5',
-        'text-xs font-semibold leading-none tracking-widest',
+        'text-xs font-medium leading-none tracking-widest',
         '[writing-mode:vertical-rl]',
         toneClass[tone],
         className,

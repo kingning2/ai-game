@@ -56,10 +56,17 @@ export function Slider({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const coarse = { ArrowRight: step, ArrowUp: step, ArrowLeft: -step, ArrowDown: -step } as const;
-    if (e.key in coarse) {
+    // 查表替代窄化断言：未知键直接 undefined 跳出
+    const deltas: Partial<Record<string, number>> = {
+      ArrowRight: step,
+      ArrowUp: step,
+      ArrowLeft: -step,
+      ArrowDown: -step,
+    };
+    const delta = deltas[e.key];
+    if (delta !== undefined) {
       e.preventDefault();
-      onChange?.(clamp(value + coarse[e.key as keyof typeof coarse], min, max));
+      onChange?.(clamp(value + delta, min, max));
     } else if (e.key === 'Home') {
       e.preventDefault();
       onChange?.(min);
@@ -97,7 +104,7 @@ export function Slider({
       {/* 滑块：百分比定位 + translate 居中；按住 spring 放大 */}
       <div
         className={cn(
-          'pointer-events-none absolute size-7 rounded-full bg-white shadow-card',
+          'pointer-events-none absolute size-7 rounded-full bg-knob shadow-card',
           'transition-transform duration-300 ease-spring active:scale-110',
         )}
         style={{ insetInlineStart: `${pct}%`, translate: '-50% 0' }}

@@ -12,7 +12,7 @@ export function Card({ className, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        'rounded-xl bg-secondary-grouped-background p-4 shadow-card shadow-[inset_0_1px_0_0_rgb(255_255_255/0.06)]',
+        'rounded-xl bg-secondary-grouped-background p-4 shadow-card shadow-inset-highlight',
         className,
       )}
       {...props}

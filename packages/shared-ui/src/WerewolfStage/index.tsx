@@ -57,7 +57,7 @@ export function WerewolfStage({
       className={cn(
         'relative flex flex-col overflow-hidden',
         fullBleed ? 'h-dvh min-h-0 rounded-none' : 'min-h-125 rounded-2xl',
-        'bg-gradient-to-b from-gray-6 to-gray-3 dark:from-gray-2 dark:to-black',
+        'bg-gradient-to-b from-stage-from to-stage-to',
         className,
       )}
     >
@@ -95,15 +95,17 @@ export function WerewolfStage({
         {/* 中央：标题 + 阶段横幅 + 字幕槽 + 内容。字幕槽恒高，出现/消失不引起内容区跳动 */}
         <VStack gap={4} align="center" className="min-w-0 flex-1 self-stretch">
           {title && (
-            <h2 className="text-center text-3xl font-black tracking-widest text-yellow drop-shadow-lg">
+            <h2 className="text-center text-3xl font-display tracking-widest text-yellow drop-shadow-stage-title">
               {title}
             </h2>
           )}
           {phase && (
             <div
               className={cn(
-                'rounded-full px-4 py-1 text-sm font-bold shadow-card',
-                phase === 'night' ? 'bg-blue/85 text-white' : 'bg-yellow/90 text-black',
+                'rounded-full px-4 py-1 text-sm font-medium shadow-card',
+                phase === 'night'
+                  ? 'bg-blue/85 text-on-accent'
+                  : 'bg-yellow/90 text-stage-ink-strong',
               )}
             >
               {phaseLabel ?? PHASE_LABEL[phase]}
@@ -111,7 +113,9 @@ export function WerewolfStage({
           )}
           <div className="flex h-14 shrink-0 items-center justify-center">
             {caption && (
-              <p className="animate-fade-in text-xl font-bold text-white drop-shadow">{caption}</p>
+              <p className="animate-fade-in text-xl font-medium text-stage-ink drop-shadow-stage-soft">
+                {caption}
+              </p>
             )}
           </div>
           {children && <div className="min-h-0 flex-1">{children}</div>}

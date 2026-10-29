@@ -79,22 +79,22 @@ export function PlayerSeat({
         <div
           className={cn(
             // 定宽：名字长短不影响头像/徽章的 x 坐标，左右列才能镜像对齐
-            'flex w-[80px] flex-col items-center gap-1 drop-shadow-md transition-[opacity,filter] duration-300',
+            'flex w-[80px] flex-col items-center gap-1 drop-shadow-stage-soft transition-[opacity,filter] duration-300',
             stateClass,
           )}
         >
           <span
             className={cn(
-              'w-full truncate text-center text-xs font-semibold text-yellow',
+              'w-full truncate text-center text-xs font-medium text-yellow',
               // 黑色双影描边：亮背景（月亮/雪地）上黄字仍可读，视频字幕惯例
-              '[text-shadow:0_1px_2px_rgba(0,0,0,0.95),0_0_6px_rgba(0,0,0,0.75)]',
+              'text-shadow-stage-name',
             )}
           >
             {name}
           </span>
           <span
             className={cn(
-              'flex size-6 items-center justify-center rounded-full text-xs font-bold text-black',
+              'flex size-6 items-center justify-center rounded-full text-xs font-medium text-stage-ink-strong',
               alive ? 'bg-yellow' : 'bg-gray-4',
             )}
           >
@@ -107,7 +107,7 @@ export function PlayerSeat({
             fallback={avatarFallback ?? name.slice(0, 1)}
             size="lg"
             className={cn(
-              'drop-shadow-md transition-[opacity,filter] duration-300',
+              'drop-shadow-stage-soft transition-[opacity,filter] duration-300',
               stateClass,
               // 睁眼光环：金色描边 + 呼吸（只动 opacity）
               spotlight && alive && 'ring-2 ring-yellow/90 animate-pulse',
@@ -123,8 +123,9 @@ export function PlayerSeat({
           {!alive && (
             <svg
               viewBox="0 0 24 24"
+              role="img"
               aria-label="淘汰"
-              className="absolute inset-0 z-10 size-full scale-125 text-red drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]"
+              className="absolute inset-0 z-10 size-full scale-125 text-red drop-shadow-stage-cross"
             >
               <path
                 d="M4 4 L20 20 M20 4 L4 20"
@@ -139,7 +140,10 @@ export function PlayerSeat({
         <RoleBadge
           label={roleLabel}
           tone={roleTone}
-          className={cn('drop-shadow-md transition-[opacity,filter] duration-300', stateClass)}
+          className={cn(
+            'drop-shadow-stage-soft transition-[opacity,filter] duration-300',
+            stateClass,
+          )}
         />
       </div>
     </div>
