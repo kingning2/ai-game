@@ -90,6 +90,48 @@
       "sourceType": "github",
       "skillPath": "skills/write-swift/SKILL.md",
       "computedHash": "3c4854221f2c654172c3532e71dcb4ece25ef62057d97bec1c26c3ab17eca191"
+    },
+    "monorepo-management": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/developer-essentials/skills/monorepo-management/SKILL.md",
+      "computedHash": "002666511709bbc0d1dc1eadf321aa7607487bb372079741cbfe294c19f72e60"
+    },
+    "turborepo-caching": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/developer-essentials/skills/turborepo-caching/SKILL.md",
+      "computedHash": "07477fcd27f880e0f55fdec25c44e7454aedec81cbe2eba95c3749cc79e53afa"
+    },
+    "react-state-management": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/frontend-mobile-development/skills/react-state-management/SKILL.md",
+      "computedHash": "71abf349b19fe5cef64f4e4f2dd4a89011a5e947d8ce278d53a489292f508032"
+    },
+    "tailwind-design-system": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/frontend-mobile-development/skills/tailwind-design-system/SKILL.md",
+      "computedHash": "b6577edb7b7f71a6954f68b80c7eea1748ccdf31862759f864bce558fb2bcf83"
+    },
+    "design-system-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/ui-design/skills/design-system-patterns/SKILL.md",
+      "computedHash": "618355f0e6c6ba8ca5d231035c9da18302fe6894aedce565743e9181b6c928ee"
+    },
+    "dsh-client-ui-ux": {
+      "source": "deepseek-ai/deepseek-harness",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/dsh-client-ui-ux/SKILL.md",
+      "computedHash": "8cf612a918d62b9da9c457904f726d5f0616c4a344f2c4a22b9c8a7550cb1370"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/ui-ux-pro-max/SKILL.md",
+      "computedHash": "ea087c341bfb5b23195c7302027268ede86da802554c18a5c4896a6017b439f9"
     }
   }
 }

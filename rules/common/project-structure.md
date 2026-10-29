@@ -23,12 +23,6 @@ agent-packages/
 │           └── components.css     # 组件级全局样式（少用）
 ├── apps/
 │   ├── web/                   # 演示场：src/App.tsx 按 Section 编排全部组件
-│   ├── docs/                  # VitePress 文档站
-│   │   ├── components/<kebab-case>.md   # 每组件一页
-│   │   ├── demos/<Name>/basic.tsx       # 可交互 demo（PascalCase 文件夹）
-│   │   ├── demos/index.ts               # demo 注册表
-│   │   ├── guide/                       # 设计理念、快速上手
-│   │   └── .vitepress/config.mts        # 侧边栏（新页必登记）
 │   └── desktop/               # Tauri
 └── rust/                      # Rust 服务端
 ```
@@ -42,19 +36,14 @@ agent-packages/
 | 纯工具函数     | `packages/shared/src/`                                       | camelCase                   |
 | 设计令牌/动画  | `packages/shared-ui/styles/`                                 | kebab-case class            |
 | 演示场示例     | `apps/web/src/App.tsx` 新 `<Section>`                        | index 递增                  |
-| 文档页         | `apps/docs/components/<kebab-case>.md`                       | 与组件名对应                |
-| 文档 demo      | `apps/docs/demos/<Name>/basic.tsx`                           | 与组件文件夹同名            |
 | 布局类组件     | `packages/shared-ui/src/layout/`                             | PascalCase                  |
 
 ## 新组件交付 checklist（缺一不可）
 
 1. `packages/shared-ui/src/<Name>/index.tsx` — 组件 + 类型
 2. `packages/shared-ui/src/index.ts` — barrel 追加导出（按 布局/基础/展示/…/AI 分组注释放对区块）
-3. `apps/docs/demos/<Name>/basic.tsx` — demo + `demos/index.ts` 注册
-4. `apps/docs/components/<name>.md` — 文档页（描述 / 何时使用 / `<DemoPreview name="<Name>Basic" />` / API 表）
-5. `apps/docs/.vitepress/config.mts` — 侧边栏登记（放对分组）
-6. `apps/web/src/App.tsx` — 新增 Section（可选，交互类组件必须）
-7. `README.md` 组件清单登记（可选，重要组件）
+3. `apps/web/src/App.tsx` — 新增 Section（可选，交互类组件必须）
+4. `README.md` 组件清单登记（可选，重要组件）
 
 ## 禁止事项
 
@@ -62,3 +51,39 @@ agent-packages/
 - 禁止绕过 barrel 直接深路径导入（`@agent-packages/shared-ui` 根导入是唯一方式；样式经 `./styles.css`）
 - 禁止在 `packages/shared` 里 import react / DOM
 - 禁止在组件文件里写 `*.css`（样式统一走 styles/ + Tailwind 工具类）
+
+## 包间纪律（借鉴 deepseek-harness packages 规范）
+
+> 来源：deepseek-harness `packages/client/AGENTS.md` + `docs/web-styling.md`（提炼自 R3 调研）。
+
+### 单向依赖红线
+
+```
+shared ← shared-ui ← apps/web ← apps/desktop
+```
+
+- 上层可 import 下层，下层禁止 import 上层；**平级包之间禁止 runtime 互相 import / re-export**（apps/web 与 apps/desktop 互不引用）。
+- 跨组件复用的代码只进窄的静态 owner（shared / shared-ui），禁止「从兄弟包借一下」。
+
+### 导出纪律
+
+- 公开 API 最小化：实现组件、helpers、常量保持模块内部；barrel 只导出契约面。
+- **不为「方便测试」拓宽公开 API**——同包测试直接相对路径导入内部文件。
+- 类型从定义处导出一次，禁止转发 re-export 链。
+
+### 组件零 ctx / 零订阅机器
+
+- 业务组件纯 props：数据三通道 = 调用方 props / 组件内部 state / 可选回调上报；禁止订阅全局 store、禁止消费/提供 context。本仓库同义规则：组件零业务逻辑、零内部数据状态（AGENTS.md 核心约束 4）。
+- web 层（apps）纯展示：业务逻辑不漏进展示组件，留在调用方或 shared。
+
+### 样式所有权（细web-styling）
+
+- `tokens.css` 独占色值/阴影/缓动；组件只消费语义工具类（`bg-fill` / `text-secondary-label`），禁止复制静态色值。
+- 主题分支（`dark:` 前缀）不进组件——令牌层翻转，组件无感知（详见 ui-design.md）。
+- 组件本地 custom property 仅限组件契约（如 `--slider-fill`），挂在组件根元素，不越过组件边界影响子树。
+
+### 依赖声明精确
+
+- 运行时依赖进 `dependencies`；仅构建/类型用进 `devDependencies`（类型包一律 dev）。
+- `peerDependencies` 只声明宿主必须自备的运行时前提（react >= 18），配 `devDependencies` 供开发。
+- 新依赖一律 `catalog:` 引用（版本唯一事实在 `pnpm-workspace.yaml`）。
