@@ -20,6 +20,10 @@ export default defineConfig(() => ({
         find: /^@agent-packages\/shared$/,
         replacement: resolve(import.meta.dirname, '../../packages/shared/index.ts'),
       },
+      {
+        find: /^@agent-packages\/game$/,
+        replacement: resolve(import.meta.dirname, '../../packages/game/src/index.ts'),
+      },
     ],
   },
 

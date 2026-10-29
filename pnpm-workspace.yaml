@@ -3,3 +3,18 @@ packages:
   - apps/*
 allowBuilds:
   esbuild: true
+
+# 依赖版本唯一事实：所有包用 `catalog:` 引用，禁止在 package.json 里手写版本号
+# （skill: monorepo-management — Consistent Versioning，消除版本漂移与重复安装）
+catalog:
+  react: ^19.3.1
+  react-dom: ^19.3.1
+  '@types/react': ^19.3.0
+  '@types/react-dom': ^19.3.0
+  typescript: ~6.0.3
+  vite: ^8.0.16
+  '@vitejs/plugin-react': ^6.1.2
+  oxc-transform-react: ^0.155.0
+  tailwindcss: ^4.3.3
+  '@tailwindcss/vite': ^4.3.3
+  tsdown: ^0.23.1

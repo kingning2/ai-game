@@ -1,2 +1,6 @@
 # Clippy 配置（放仓库根，理由同 rustfmt.toml）
 msrv = "1.97.1"
+
+# 测试代码放行 unwrap/expect（生产代码仍 warn，存量清零后可升 deny）
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true

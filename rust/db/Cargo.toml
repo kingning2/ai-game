@@ -1,0 +1,20 @@
+[package]
+name = "db"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish.workspace = true
+description = "SQLite 持久化包：狼人杀房间 / 对局结果 / 全过程事件流水（rusqlite bundled，单文件库）"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[dependencies.rusqlite]
+workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

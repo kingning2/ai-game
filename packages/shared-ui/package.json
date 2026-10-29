@@ -30,11 +30,12 @@
     "react-dom": ">=18"
   },
   "devDependencies": {
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "tsdown": "^0.23.1"
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
     "@agent-packages/shared": "workspace:*",

@@ -2,6 +2,8 @@
 name = "tts"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
+publish.workspace = true
 description = "本地语音合成：sherpa-onnx kokoro 模型进程内推理（不联网调用），负责模型资产下载与 WAV 输出"
 
 [dependencies]
@@ -9,7 +11,9 @@ description = "本地语音合成：sherpa-onnx kokoro 模型进程内推理（�
 sherpa-onnx = "2.0.0"
 
 # 资产下载（GitHub release 模型包）
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { workspace = true, features = ["rustls-tls", "stream"] }
+rand.workspace = true
+uuid.workspace = true
 futures-util = "0.3"
 
 # 豆包官方语音（逆向网页版 WebSocket 协议）
@@ -28,7 +32,7 @@ tracing.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
+tempfile.workspace = true
 
 [lints]
 workspace = true

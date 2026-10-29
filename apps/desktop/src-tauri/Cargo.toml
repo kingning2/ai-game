@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Agent Packages 桌面壳（Tauri），负责拉起 axum sidecar"
 authors = ["you"]
 edition = "2024"
+rust-version.workspace = true
+publish.workspace = true
 # 本 crate 不在 rust/ 目录树内，通过 workspace 声明挂入仓库根的 rust/ 工作区
 workspace = "../../../rust"
 

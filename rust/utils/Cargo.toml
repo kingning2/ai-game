@@ -2,7 +2,9 @@
 name = "utils"
 version = "0.1.0"
 edition = "2024"
-description = "应用整体日志文件"
+rust-version.workspace = true
+publish.workspace = true
+description = "通用基础工具：环境变量读取（env）、可失败操作包装（FallibleExt）"
 
 [dependencies]
 thiserror.workspace = true

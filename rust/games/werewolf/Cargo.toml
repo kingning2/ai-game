@@ -2,13 +2,14 @@
 name = "werewolf"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
+publish.workspace = true
 description = "狼人杀游戏引擎：纯逻辑状态机（发牌 / 夜晚行动 / 白天放逐 / 胜负判定），动作由调用方喂入"
 
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
-tools.workspace = true
 
 [dev-dependencies]
 

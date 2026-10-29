@@ -2,6 +2,8 @@
 name = "memory"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
+publish.workspace = true
 description = "通用 LLM 记忆系统：时间线条目模型（tag/seq/source）+ prompt 渲染，领域无关"
 
 [dependencies]

@@ -18,9 +18,11 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "devDependencies": {
-    "tsdown": "^0.23.1"
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
   }
 }

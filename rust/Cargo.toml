@@ -4,13 +4,12 @@ members = [
   "server",
   "tts",
   "../apps/desktop/src-tauri",
-  "logging",
   "utils",
   "state",
   "agent",
-  "tools",
   "games/werewolf",
   "memory",
+  "db",
 ]
 
 # workspace 级 profile（成员里的 [profile.*] 会被 cargo 忽略）
@@ -28,6 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 axum = "0.8"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # 统一版本
 # - "net"：TcpListener；"macros"：#[tokio::main]/#[tokio::test]；"time"：超时/Elapsed
 # - "signal"：优雅关闭（Ctrl+C / 控制台关闭事件）
@@ -36,16 +36,30 @@ tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time",
 utoipa = "5"
 # 平台配置目录定位
 dirs = "6"
+# SQLite（db 包 bundled 静态编译；state 公共字段直接暴露 Connection 类型）
+rusqlite = { version = "0.37", features = ["bundled"] }
+# HTTP 客户端（agent / tts 共用；默认关 default-features，各包按需加 rustls-tls/json/stream）
+reqwest = { version = "0.12", default-features = false }
+# dev 依赖统一版本（db / tts 测试用临时目录）
+tempfile = "3"
+# tower（server / state 的测试 middleware）
+tower = { version = "0.5", features = ["util"] }
+rand = "0.9"
+uuid = { version = "1.28", features = ["v4"] }
 
 # 内部 Workspace 包
-logging = { path = "logging" }
 utils = { path = "utils" }
 state = { path = "state" }
 agent = { path = "agent" }
-tools = { path = "tools" }
 werewolf = { path = "games/werewolf" }
 memory = { path = "memory" }
 tts = { path = "tts" }
+db = { path = "db" }
+
+# 全 workspace 统一包元数据（各 member 用 KEY.workspace = true 继承）
+[workspace.package]
+rust-version = "1.97.1"
+publish = false
 
 # 全 workspace 统一 lint 策略（各包 [lints] workspace = true 继承）
 [workspace.lints.clippy]
@@ -58,3 +72,39 @@ print_stdout = "warn"
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
+# ---- 以下 37 条来自 openai/codex 的 workspace lint 表（见 references/codex-clippy-lints.md），
+# ---- 沿用本 workspace 的 warn 基线；存量清零后可逐条升为 deny
+await_holding_invalid_type = "warn"
+await_holding_lock = "warn"
+disallowed_methods = "warn"
+identity_op = "warn"
+manual_clamp = "warn"
+manual_filter = "warn"
+manual_find = "warn"
+manual_flatten = "warn"
+manual_map = "warn"
+manual_memcpy = "warn"
+manual_non_exhaustive = "warn"
+manual_ok_or = "warn"
+manual_range_contains = "warn"
+manual_retain = "warn"
+manual_strip = "warn"
+manual_try_fold = "warn"
+manual_unwrap_or = "warn"
+needless_borrow = "warn"
+needless_borrowed_reference = "warn"
+needless_collect = "warn"
+needless_late_init = "warn"
+needless_option_as_deref = "warn"
+needless_question_mark = "warn"
+needless_update = "warn"
+redundant_clone = "warn"
+redundant_closure = "warn"
+redundant_closure_for_method_calls = "warn"
+redundant_static_lifetimes = "warn"
+trivially_copy_pass_by_ref = "warn"
+uninlined_format_args = "warn"
+unnecessary_filter_map = "warn"
+unnecessary_lazy_evaluations = "warn"
+unnecessary_sort_by = "warn"
+unnecessary_to_owned = "warn"

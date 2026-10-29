@@ -7,6 +7,9 @@
     "jsx": "react-jsx",
 
     "strict": true,
+    // 全仓禁用 unknown（规则见 rules/common/package-rules.md）：catch 变量按 any 处理，
+    // 错误分流由 shared 的 ApiError 与 is* 判别方法承担
+    "useUnknownInCatchVariables": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
