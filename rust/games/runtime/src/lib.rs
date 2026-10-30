@@ -8,7 +8,7 @@
 
 use bevy_ecs::prelude::*;
 use game_domain::{
-    Action, BoardConfig, BoardError, GameError, NightStage, Phase, PlayerId, PlayerState, Role,
+    Action, BoardConfig, BoardError, GameError, NightStage, Phase, PlayerId, PlayerState,
 };
 use game_events::GameEvent;
 
@@ -132,9 +132,4 @@ impl GameManager {
         rows.sort_by_key(|p| p.id);
         self.players = rows;
     }
-}
-
-/// 上帝视角点名辅助：座位号 → (id, role)。不存在返回 `None`（校验层兜底）。
-pub fn role_of(manager: &GameManager, id: PlayerId) -> Option<Role> {
-    manager.players.get(id as usize).map(|p| p.role)
 }

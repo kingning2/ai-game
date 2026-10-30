@@ -2,7 +2,7 @@
 //!
 //! 对每个板子 × 每个种子断言：
 //! 1. 逐座位 (id, role, alive, can_vote) 与 `GameEngine::new` 完全一致；
-//! 2. 开局事件 `GameStarted` 与引擎事件日志第一条逐字节一致。
+//! 2. 开局事件日志（GameStarted + NightBegan）与引擎逐字节一致。
 
 use bevy_ecs::prelude::*;
 use game_domain::BoardConfig;
@@ -44,11 +44,8 @@ fn same_seed_same_deal() {
             assert_eq!(ecs_deal, engine_deal, "发牌不一致: seed={seed}");
 
             let log = world.resource::<EventLog>();
-            assert_eq!(
-                Some(log.events.first()),
-                Some(engine.events().first()),
-                "开局事件不一致: seed={seed}"
-            );
+            // 全量比对开局日志，不只第一条
+            assert_eq!(log.events, engine.events(), "开局日志不一致: seed={seed}");
         }
     }
 }

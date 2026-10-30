@@ -93,9 +93,13 @@ pub(crate) fn apply_duel(
     let Action::KnightDuel { target } = action else {
         return Err(GameError::WrongPhase("决斗窗口只接受 KnightDuel"));
     };
-    set_duel_used(world, knight);
+    // 先验后改：目标非法时决斗权不烧（修复旧引擎“先置 duel_used 后校验”的缺陷；
+    // 同步保证 apply Err 路径零突变 → GameManager 缓存不脱同步）
     if let Some(target) = target {
         check_target_alive(world, target)?;
+    }
+    set_duel_used(world, knight);
+    if let Some(target) = target {
         let target_is_wolf = role_of(world, target).camp() == Camp::Werewolf;
         let loser = if target_is_wolf {
             named(world, target)
@@ -174,10 +178,10 @@ fn resolve_vote(world: &mut World, day: u32) {
         .map(|(seat, _)| *seat)
         .collect();
 
-    // 恢复所有活人投票权（白痴除外，下面对其单独处理）
-    let mut q = world.query::<&mut Seat>();
-    for mut seat in q.iter_mut(world) {
-        if seat.alive {
+    // 恢复活人投票权（已翻牌白痴除外：失去投票权是永久性的）
+    let mut q = world.query::<(&mut Seat, &IdiotRevealed)>();
+    for (mut seat, idiot) in q.iter_mut(world) {
+        if seat.alive && !idiot.0 {
             seat.can_vote = true;
         }
     }
