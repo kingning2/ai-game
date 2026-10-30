@@ -7,7 +7,11 @@
 use bevy_ecs::prelude::*;
 use game_domain::{BoardConfig, BoardError, Rng};
 
-use crate::resources::{EventLog, GameRng, Potions, SetupConfig};
+use crate::flow::enter_night;
+use crate::resources::{
+    DuelOffered, EventLog, GameRng, LastProtected, NightRecord, Potions, SetupConfig, Votes,
+    WolfChat,
+};
 use crate::schedules::{Setup, setup_schedule};
 
 /// 开局：校验板子 → 插入资源 → 跑 Setup 调度（发牌 + 开局事件）
@@ -21,8 +25,15 @@ pub fn setup_world(world: &mut World, board: BoardConfig, seed: u64) -> Result<(
         poison: witch_present,
     });
     world.insert_resource(EventLog::default());
+    world.insert_resource(NightRecord::default());
+    world.insert_resource(LastProtected(None));
+    world.insert_resource(Votes::default());
+    world.insert_resource(DuelOffered(false));
+    world.insert_resource(WolfChat(None));
     world.init_resource::<Schedules>();
     world.resource_mut::<Schedules>().insert(setup_schedule());
     world.run_schedule(Setup);
+    // 与引擎 `GameEngine::new` 一致：发牌事件后立即开启第一夜
+    enter_night(world, 1);
     Ok(())
 }

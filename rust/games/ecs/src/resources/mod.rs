@@ -5,4 +5,7 @@
 
 mod game;
 
-pub use game::{EventLog, GamePhase, GameRng, Potions, SetupConfig};
+pub use game::{
+    DuelOffered, EventLog, GamePhase, GameRng, LastProtected, NightRecord, Potions, SetupConfig,
+    Votes, WolfChat, WolfCursor,
+};

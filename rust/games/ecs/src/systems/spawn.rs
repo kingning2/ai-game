@@ -4,13 +4,12 @@
 //! 黄金测试保证同 seed 下两侧发牌逐座位一致。
 
 use bevy_ecs::prelude::*;
-use game_domain::{NightStage, Phase};
 use game_events::GameEvent;
 
 use crate::components::{
     DuelUsed, IdiotRevealed, PlayerBundle, PlayerMark, RoleOf, Seat, SeerChecks,
 };
-use crate::resources::{EventLog, GamePhase, GameRng, SetupConfig};
+use crate::resources::{EventLog, GameRng, SetupConfig};
 
 /// 开局发牌：按板子角色表洗牌后逐座位 spawn（Bevy Entity 由 Commands 延迟创建）
 pub fn player_spawn_system(
@@ -35,11 +34,8 @@ pub fn player_spawn_system(
             checks: SeerChecks(Vec::new()),
         });
     }
-    commands.insert_resource(GamePhase(Phase::Night {
-        day: 1,
-        stage: NightStage::Guard,
-    }));
-    // 开局事件与引擎逐字一致（GameStarted 的 board 计数过滤零人数角色）
+    // 开局事件与引擎逐字一致（GameStarted 的 board 计数过滤零人数角色）；
+    // NightBegan 与起始窗口定位由 setup_world 在 Setup 调度后统一处理
     log.events.push(GameEvent::GameStarted {
         players: board.total(),
         board: board

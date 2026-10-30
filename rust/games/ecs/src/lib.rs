@@ -7,8 +7,15 @@
 //! - 对外 World 不暴露：server / agent 只经 werewolf 门面与 game-runtime 交互。
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod apply;
 pub mod components;
+pub(crate) mod day;
+pub(crate) mod flow;
+pub(crate) mod night;
 pub mod resources;
 pub mod schedules;
 pub mod setup;
 pub mod systems;
+
+pub use apply::apply_action;
+pub use setup::setup_world;
