@@ -8,36 +8,7 @@ use crate::phase::{
 };
 use crate::player::PlayerState;
 use crate::role::{Camp, Role};
-
-/// 随机数发生器：xorshift64（发牌洗牌用；seed 相同 ⇒ 发牌相同，可复现测试）
-struct Rng(u64);
-
-impl Rng {
-    /// splitmix64 雪崩混淆：相邻 seed（如 7/8）也能产生完全不同的序列
-    fn from_seed(seed: u64) -> Self {
-        let mut z = seed;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        Self((z ^ (z >> 31)) | 1)
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.0 = x;
-        x
-    }
-
-    /// Fisher–Yates 洗牌
-    fn shuffle<T>(&mut self, items: &mut [T]) {
-        for i in (1..items.len()).rev() {
-            let j = (self.next_u64() % (i as u64 + 1)) as usize;
-            items.swap(i, j);
-        }
-    }
-}
+use game_domain::Rng;
 
 /// 女巫药水持有量（各一瓶，整局有效）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,0 +1,18 @@
+[package]
+name = "game-ecs"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+description = "狼人杀 ECS 运行时：bevy_ecs 组件/资源/系统/调度（游戏规则仍在 game-domain，本包只做数据组织与调度）"
+
+[dependencies]
+bevy_ecs.workspace = true
+game-domain = { path = "../domain", version = "0.1.0" }
+game-events = { path = "../events", version = "0.1.0" }
+
+[dev-dependencies]
+werewolf.workspace = true
+
+[lints]
+workspace = true
