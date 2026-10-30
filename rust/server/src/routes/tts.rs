@@ -149,7 +149,12 @@ async fn speak_edge(voice: &str, text: &str) -> Result<axum::response::Response,
     let bytes = tts::edge::synthesize(voice, text, tts::edge::DEFAULT_SPEED)
         .await
         .map_err(tts_error)?;
-    Ok((StatusCode::OK, [(header::CONTENT_TYPE, "audio/mpeg")], bytes).into_response())
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "audio/mpeg")],
+        bytes,
+    )
+        .into_response())
 }
 
 /// 豆包云端引擎分支：官方音色（协议逆向自社区项目 callmerio/doubao-tts）

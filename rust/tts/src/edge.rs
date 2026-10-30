@@ -15,7 +15,11 @@ pub const DEFAULT_SPEED: f32 = 1.15;
 /// 语速倍率 → SSML rate（如 1.15 → "+15%"）
 fn rate_of(speed: f32) -> String {
     let pct = ((speed - 1.0) * 100.0).round() as i32;
-    if pct >= 0 { format!("+{pct}%") } else { format!("{pct}%") }
+    if pct >= 0 {
+        format!("+{pct}%")
+    } else {
+        format!("{pct}%")
+    }
 }
 
 /// 音色池：Edge TTS 免费接口的全部**普通话**音色（实测共 6 个：2 女 4 男；
@@ -74,8 +78,8 @@ pub async fn synthesize(voice: &str, text: &str, speed: f32) -> Result<Vec<u8>, 
 ///
 /// 纯函数：同一局反复调用结果一致（重启不变），局间 game_id 不同 → 分配不同。
 pub fn assign(seed: u64, n: usize) -> Vec<String> {
-    use rand::seq::SliceRandom;
     use rand::SeedableRng;
+    use rand::seq::SliceRandom;
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut pool: Vec<String> = VOICES
         .iter()

@@ -17,7 +17,11 @@ fn rate_of_maps_speed_to_ssml() {
 
 #[test]
 fn voices_pool_invariants() {
-    assert_eq!(VOICES.len(), 6, "Edge 普通话音色实测共 6 个，变动需重新实测");
+    assert_eq!(
+        VOICES.len(),
+        6,
+        "Edge 普通话音色实测共 6 个，变动需重新实测"
+    );
     let mut sorted = VOICES.to_vec();
     sorted.sort_unstable();
     sorted.dedup();
@@ -51,7 +55,9 @@ fn assign_is_deterministic_per_game() {
 
 #[tokio::test]
 async fn synthesize_rejects_unknown_voice_offline() {
-    let err = synthesize("zh-CN-NotAVoice", "你好", 1.0).await.unwrap_err();
+    let err = synthesize("zh-CN-NotAVoice", "你好", 1.0)
+        .await
+        .unwrap_err();
     assert!(matches!(err, TtsError::InvalidInput(_)));
 }
 
@@ -59,6 +65,9 @@ async fn synthesize_rejects_unknown_voice_offline() {
 async fn synthesize_rejects_out_of_range_speed_offline() {
     for speed in [0.4, 2.1, -1.0] {
         let err = synthesize(HOST_VOICE, "你好", speed).await.unwrap_err();
-        assert!(matches!(err, TtsError::InvalidInput(_)), "语速 {speed} 应被拒");
+        assert!(
+            matches!(err, TtsError::InvalidInput(_)),
+            "语速 {speed} 应被拒"
+        );
     }
 }
