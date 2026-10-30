@@ -6,7 +6,8 @@
 rules/
 ├── common/                  # 项目级通用约定（永远适用）
 │   ├── project-structure.md # 文件放哪、命名、导出
-│   └── coding-style.md      # TS/React 编码规范
+│   ├── coding-style.md      # TS/React 编码规范
+│   └── rust-game-engine.md  # rust/ 游戏引擎 crate 拓扑与 ECS 约束
 └── web/                     # 前端领域（具体覆盖通用）
     ├── ui-design.md         # 令牌 / 用色 / 动效 / 布局
     └── component-guide.md   # 组件使用 + 新增组件流程

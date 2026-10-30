@@ -44,6 +44,7 @@
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- | --------------- |
 | [`rules/common/project-structure.md`](rules/common/project-structure.md) | 文件放哪个文件夹、命名、barrel 导出、包间纪律（依赖红线/导出/样式所有权） | 新建任何文件前  |
 | [`rules/common/coding-style.md`](rules/common/coding-style.md)           | TS/React 编码规范、格式化、校验命令                                       | 写代码前        |
+| [`rules/common/rust-game-engine.md`](rules/common/rust-game-engine.md)   | rust/ 游戏引擎 crate 拓扑与依赖红线、GameEvent 事实源、黄金对拍、seed 确定性 | 碰 rust/ 任何代码前 |
 | [`rules/web/ui-design.md`](rules/web/ui-design.md)                       | 令牌三层、Apple HIG 用色、动效、布局、反馈面/overlay 判断力               | 做任何 UI 前    |
 | [`rules/web/component-guide.md`](rules/web/component-guide.md)           | 组件怎么用、怎么新增一个组件（全流程 checklist）                          | 使用/新增组件时 |
 
@@ -54,7 +55,8 @@
 1. **任何 Rust 问题先读 `rust-router` skill**，按它的三层路由（语言机制 → 设计 → 领域约束）走，禁止直接给表面修复（如遇到 E0382 就建议 `.clone()`）。
 2. **workspace 结构约束读 `rust-cargo-workspace-designer` skill**：改根 Cargo.toml / 新建 crate / 加依赖前必读；交付前跑它自带的机械检查脚本（可执行文件放在 /tmp/，不存在则按 skill 说明用 rustc 重新编译）：`/tmp/manifest_lint . --strict && /tmp/dep_audit . --strict`，有 finding 必须修复。
 3. **clippy lint 表**：workspace 根 `Cargo.toml` 的 `[workspace.lints]` 及配套 `clippy.toml` 按 `rust-cargo-workspace-designer/references/codex-clippy-lints.md` 配置（来自 openai/codex 的 37 条 deny 清单）；member 必须继承 `[lints] workspace = true`，禁止局部 `#[allow]` 逃逸。
-4. 上述 skill 与本文件冲突时，**碰 Rust 代码以 skill 为准**，其余（构建/验收流程）以本文件为准。
+4. **rust/ 游戏引擎架构读 [`rules/common/rust-game-engine.md`](rules/common/rust-game-engine.md)**（强制）：crate 拓扑依赖红线（domain/events/ecs/runtime/werewolf 门面）、GameEvent 事实源唯一、行为改动必过黄金对拍测试、seed 确定性契约。
+5. 上述 skill 与本文件冲突时，**碰 Rust 代码以 skill 为准**，其余（构建/验收流程）以本文件为准。
 
 ## UI/UX 规则（强制）
 

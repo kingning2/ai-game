@@ -27,10 +27,11 @@ const COLOR_RULES: Array<[RegExp, string]> = [
 ];
 
 /** packages|apps 下的源码/样式文件 → 需要守卫；tokens.css 与 node_modules 豁免 */
-function guardedKind(path: string): 'code' | 'style' | null {
+function guardedKind(path: string): 'code' | 'style' | 'rust' | null {
   const p = path.replaceAll('\\', '/');
   if (p.includes('node_modules') || p.includes('tokens.css')) return null;
-  if (!/(^|\/)(packages|apps)\//.test(p)) return null;
+  if (!/(^|\/)(packages|apps|rust|server)\//.test(p)) return null;
+  if (p.endsWith('.rs')) return 'rust';
   if (p.endsWith('.ts') || p.endsWith('.tsx')) return 'code';
   if (p.endsWith('.css')) return 'style';
   return null;
@@ -62,7 +63,9 @@ export default function repoGuard(pi: ExtensionAPI) {
   // ── 1. 硬编码色值拦截 ─────────────────────────────────────────────
   pi.on('tool_call', async (event) => {
     if (event.toolName !== 'edit' && event.toolName !== 'write') return;
-    if (!guardedKind(event.input.path)) return;
+    const kind = guardedKind(event.input.path);
+    // 色值拦截只针对前端代码（rust/ 无样式语义，避免注释里十六进制常量误报）
+    if (!kind || kind === 'rust') return;
 
     const text = newTextOf(event);
     if (!text || text.includes(ALLOW_MARK)) return;
@@ -96,12 +99,15 @@ export default function repoGuard(pi: ExtensionAPI) {
     if (!kind) return;
     dirtyAt ??= Date.now();
 
-    // 按触达文件选规则：tsx → UI 双件套；css → ui-design；ts → coding-style；新建文件 → 另加 project-structure
+    // 按触达文件选规则：tsx → UI 双件套；css → ui-design；rs → 游戏引擎架构；
+    // ts → coding-style；新建文件 → 另加 project-structure
     const rules: string[] = [];
     if (kind === 'code' && event.input.path.endsWith('.tsx')) {
       rules.push('rules/web/ui-design.md', 'rules/web/component-guide.md');
     } else if (kind === 'style') {
       rules.push('rules/web/ui-design.md');
+    } else if (kind === 'rust') {
+      rules.push('rules/common/rust-game-engine.md');
     } else {
       rules.push('rules/common/coding-style.md');
     }
