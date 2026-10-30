@@ -1,0 +1,18 @@
+[package]
+name = "game-runtime"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+description = "狼人杀运行时：GameManager（每局一个 ECS World 的生命周期门面，API 与旧引擎逐字一致）"
+
+[dependencies]
+game-domain = { path = "../domain", version = "0.1.0" }
+game-events = { path = "../events", version = "0.1.0" }
+game-ecs = { path = "../ecs", version = "0.1.0" }
+bevy_ecs.workspace = true
+
+[dev-dependencies]
+
+[lints]
+workspace = true

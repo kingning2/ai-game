@@ -11,7 +11,7 @@ members = [
   "games/domain",
   "games/events",
   "games/ecs",
-  "games/ecs",
+  "games/runtime",
   "memory",
   "db",
   "macros",
@@ -65,6 +65,8 @@ agent = { path = "agent" }
 werewolf = { path = "games/werewolf" }
 game-domain = { path = "games/domain" }
 game-events = { path = "games/events" }
+game-ecs = { path = "games/ecs", version = "0.1.0" }
+game-runtime = { path = "games/runtime", version = "0.1.0" }
 bevy_ecs = "=0.20.1"
 memory = { path = "memory" }
 tts = { path = "tts" }

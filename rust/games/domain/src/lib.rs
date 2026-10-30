@@ -8,6 +8,7 @@ pub mod action;
 pub mod board;
 pub mod error;
 pub mod phase;
+pub mod player;
 pub mod rng;
 pub mod role;
 pub mod script;
@@ -19,6 +20,7 @@ pub use phase::{
     CheckRecord, CheckResult, DeathCause, NightStage, Outcome, Phase, PlayerId, PlayerRole, Viewer,
     WerewolfReason,
 };
+pub use player::PlayerState;
 pub use rng::Rng;
 pub use role::{Camp, Role, RoleProfile};
 pub use script::{SCRIPTS, ScriptDef};

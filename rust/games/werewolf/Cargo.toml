@@ -9,6 +9,7 @@ description = "狼人杀游戏引擎：纯逻辑状态机（发牌 / 夜晚行�
 [dependencies]
 game-domain = { path = "../domain", version = "0.1.0" }
 game-events = { path = "../events", version = "0.1.0" }
+game-runtime = { path = "../runtime", version = "0.1.0" }
 serde.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true

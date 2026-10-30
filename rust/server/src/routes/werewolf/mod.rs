@@ -438,11 +438,10 @@ impl GameStatusDto {
         }
     }
 
-    /// 附加上帝视角事件流（开局后才有引擎可取）
-    pub fn with_events(mut self, engine: Option<&GameEngine>) -> Self {
-        if let Some(engine) = engine {
-            self.events = engine
-                .events()
+    /// 附加上帝视角事件流（开局后才有引擎可取；只读事件切片，不克隆引擎）
+    pub fn with_events(mut self, events: Option<&[GameEvent]>) -> Self {
+        if let Some(events) = events {
+            self.events = events
                 .iter()
                 .enumerate()
                 .filter_map(|(seq, event)| {
@@ -713,9 +712,11 @@ pub async fn get_status(
     if let Ok(view) = state.game.view(game_id) {
         let engine = state
             .game
-            .with_engine(game_id, |engine: Option<&GameEngine>| engine.cloned())
+            .with_engine(game_id, |engine: Option<&GameEngine>| {
+                engine.map(|engine| engine.events().to_vec())
+            })
             .unwrap_or_default();
-        let mut dto = GameStatusDto::of(&view).with_events(engine.as_ref());
+        let mut dto = GameStatusDto::of(&view).with_events(engine.as_deref());
         // 手动终局没有 MVP 流程 → null；其余（running/自然结算）按投票状态组装
         dto.mvp = match dto.ended_reason.as_deref() {
             Some("manual") => None,

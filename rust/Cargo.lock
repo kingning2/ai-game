@@ -1864,6 +1864,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "game-runtime"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "game-domain",
+ "game-ecs",
+ "game-events",
+]
+
+[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6230,6 +6240,7 @@ version = "0.1.0"
 dependencies = [
  "game-domain",
  "game-events",
+ "game-runtime",
  "macros",
  "serde",
  "serde_json",
