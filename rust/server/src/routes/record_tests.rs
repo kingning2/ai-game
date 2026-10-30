@@ -15,7 +15,7 @@ fn safe_name_passes_clean_names() {
 fn safe_name_strips_traversal_and_illegal_chars() {
     assert_eq!(safe_name("../etc/passwd"), "---etc-passwd");
     assert_eq!(safe_name("..\\..\\win"), "------win");
-    assert_eq!(safe_name("房间 1"), "----1");
+    assert_eq!(safe_name("房间 1"), "---1");
     assert_eq!(safe_name("a/b\\c:d"), "a-b-c-d");
 }
 

@@ -20,7 +20,7 @@ use tower_http::cors::CorsLayer;
 use crate::error::BoxError;
 use crate::openapi as docs;
 use crate::routes::rooms;
-use crate::routes::{agent_config, health, info, leaderboard, roster, tts, werewolf};
+use crate::routes::{agent_config, health, info, leaderboard, record, roster, tts, werewolf};
 use tracing::{error, info};
 
 /// 生命周期入口：`main()` 唯一调用点
@@ -128,6 +128,7 @@ fn build_router(state: AppState) -> Router {
         .merge(rooms::router())
         .merge(leaderboard::router())
         .merge(werewolf::router())
+        .merge(record::router())
         .merge(tts::router())
         .merge(docs::router())
         // 框架层错误统一转成 error 包的包裹响应（否则 axum 默认回裸文本，前端会归为 http 而非 business）：
