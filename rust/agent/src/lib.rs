@@ -21,9 +21,8 @@
 //!
 //! let mut stream = provider
 //!     .chat_stream(agent::message::ChatRequest {
-//!         model: None,
 //!         messages: vec![ChatMessage::user("你好")],
-//!         thinking: None,
+//!         ..agent::message::ChatRequest::default()
 //!     })
 //!     .await?;
 //!
@@ -48,7 +47,7 @@ pub mod stream;
 
 // 错误类型定义在 [`error`] 模块，包根 re-export 保持原路径可用
 pub use error::{AgentError, AgentResult};
-pub use message::{ChatMessage, ChatRequest, ThinkingMode};
+pub use message::{ChatMessage, ChatRequest, ThinkingMode, ToolCall, ToolDefinition, ToolResult};
 // 包根主要类型出口：对接层的使用方（state/server）不需要进模块路径
 pub use provider::{
     AgentConfig, AgentProvider, ChatStreamFuture, ProviderKind, ProviderSettings, build_provider,

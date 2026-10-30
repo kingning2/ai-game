@@ -19,3 +19,6 @@ dist/
 
 # local experiments
 tmp/
+
+# 本地录屏调试产物
+recordings/

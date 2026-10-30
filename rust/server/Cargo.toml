@@ -22,6 +22,7 @@ utoipa.workspace = true
 # 内部依赖
 state.workspace = true
 agent.workspace = true
+macros.workspace = true
 werewolf.workspace = true
 memory.workspace = true
 tts.workspace = true

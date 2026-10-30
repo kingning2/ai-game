@@ -1,0 +1,5 @@
+error: 未知 #[param] 属性，仅支持 description
+ --> tests/trybuild/fail_bad_param_attr.rs:6:13
+  |
+6 |     #[param(desc = "旧写法")]
+  |             ^^^^

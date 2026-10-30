@@ -10,6 +10,7 @@
 
 pub mod assets;
 pub mod doubao;
+pub mod edge;
 pub mod voices;
 
 use std::path::{Path, PathBuf};

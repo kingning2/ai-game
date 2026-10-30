@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::message::ToolCall;
+
 /// 令牌用量（对齐前端 Usage 组件的字段）
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
@@ -15,7 +17,9 @@ pub enum StopReason {
     EndTurn,
     /// 达到 max_tokens 被截断（openai "length" / anthropic "max_tokens"）
     MaxTokens,
-    /// 其他（tool_calls / stop_sequence 等本版本未支持的语义）
+    /// 模型要求调用工具（openai "tool_calls" / anthropic "tool_use"）
+    ToolCalls,
+    /// 其他（stop_sequence 等本版本未支持的语义）
     Other,
 }
 
@@ -23,9 +27,21 @@ impl StopReason {
     /// 协议原生字符串 → 统一语义（未知取值归 Other，不报错——前向兼容新 finish 原因）
     pub fn from_protocol(raw: &str) -> Self {
         match raw {
-            "stop" | "end_turn" | "stop_sequence" => Self::EndTurn,
+            "stop" | "end_turn" => Self::EndTurn,
             "length" | "max_tokens" => Self::MaxTokens,
+            "tool_calls" | "tool_use" => Self::ToolCalls,
             _ => Self::Other,
+        }
+    }
+
+    /// 统一语义 → 协议原生字符串（[`Self::from_protocol`] 的逆映射，
+    /// provider 层组装多轮消息时判断是否需要回喂工具结果）
+    pub fn to_protocol(self) -> &'static str {
+        match self {
+            Self::EndTurn => "end_turn",
+            Self::MaxTokens => "max_tokens",
+            Self::ToolCalls => "tool_calls",
+            Self::Other => "other",
         }
     }
 }
@@ -41,55 +57,17 @@ pub enum AgentEvent {
 
     /// 思考/推理增量（对齐 Thinking 组件；不支持推理的模型不会出现）
     ThinkingDelta { delta: String },
-
     /// 令牌用量（流结束前发出；input 或 output 任一收齐即发，缺的一侧为 0）
     Usage { usage: Usage },
+
+    /// 模型要求调用工具（分片已在 provider 层聚合为完整调用；
+    /// 紧跟 `Done { stop_reason: ToolCalls }`，调用方按 call_id 回填结果后继续对话）
+    ToolCalls { calls: Vec<ToolCall> },
 
     /// 流正常结束
     Done { stop_reason: StopReason },
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// serde tag 约定：server 的 SSE 转发直接 to_string，字段名变更要过这里
-    #[test]
-    fn event_serde_wire_format() {
-        let text = serde_json::to_string(&AgentEvent::TextDelta {
-            delta: "你好".into(),
-        })
-        .unwrap();
-        assert_eq!(text, r#"{"type":"text_delta","delta":"你好"}"#);
-
-        let done = serde_json::to_string(&AgentEvent::Done {
-            stop_reason: StopReason::EndTurn,
-        })
-        .unwrap();
-        assert_eq!(done, r#"{"type":"done","stop_reason":"end_turn"}"#);
-
-        let usage = serde_json::to_string(&AgentEvent::Usage {
-            usage: Usage {
-                input_tokens: 6,
-                output_tokens: 9,
-            },
-        })
-        .unwrap();
-        assert_eq!(
-            usage,
-            r#"{"type":"usage","usage":{"input_tokens":6,"output_tokens":9}}"#
-        );
-    }
-
-    #[test]
-    fn stop_reason_mapping() {
-        assert_eq!(StopReason::from_protocol("stop"), StopReason::EndTurn);
-        assert_eq!(StopReason::from_protocol("end_turn"), StopReason::EndTurn);
-        assert_eq!(StopReason::from_protocol("length"), StopReason::MaxTokens);
-        assert_eq!(
-            StopReason::from_protocol("max_tokens"),
-            StopReason::MaxTokens
-        );
-        assert_eq!(StopReason::from_protocol("tool_calls"), StopReason::Other);
-    }
-}
+#[path = "event_tests.rs"]
+mod tests;

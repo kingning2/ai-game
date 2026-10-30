@@ -1,0 +1,5 @@
+error: #[game_event] 事件变体必须使用命名字段或无字段形式
+ --> tests/trybuild/fail_game_event_tuple.rs:6:5
+  |
+6 |     Legacy(u32),
+  |     ^^^^^^

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use macros::game_event;
+
 use crate::action::Action;
 use crate::phase::{DeathCause, Outcome, PlayerId, PlayerRole};
 
@@ -10,6 +12,7 @@ use crate::phase::{DeathCause, Outcome, PlayerId, PlayerRole};
 /// `snapshot.rs` 完成，引擎事件流本身保持完整（供回放/审计）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
+#[game_event]
 pub enum GameEvent {
     /// 开局：板子校验通过、发牌完成
     GameStarted {
@@ -78,23 +81,9 @@ pub enum GameEvent {
 }
 
 impl GameEvent {
-    /// 事件所属天数（开局/终局/夜间暗中行动为 0）
+    /// 事件所属天数（开局/终局/夜间暗中行动为 0；天数推导由 #[game_event] 生成）
     pub fn day(&self) -> u32 {
-        match self {
-            GameEvent::GameStarted { .. }
-            | GameEvent::GameOver { .. }
-            | GameEvent::NightAction { .. } => 0,
-            GameEvent::NightBegan { day }
-            | GameEvent::Dawn { day, .. }
-            | GameEvent::SpeechMade { day, .. }
-            | GameEvent::KnightDuelResolved { day, .. }
-            | GameEvent::VoteResolved { day, .. }
-            | GameEvent::IdiotRevealed { day, .. }
-            | GameEvent::HunterShotFired { day, .. }
-            | GameEvent::PlayerDied { day, .. }
-            | GameEvent::WolfChatSpoke { day, .. }
-            | GameEvent::WolfChatPassed { day, .. } => *day,
-        }
+        self.day_of().unwrap_or(0)
     }
 }
 

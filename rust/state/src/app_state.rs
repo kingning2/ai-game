@@ -89,14 +89,5 @@ fn open_db(path: Option<&str>) -> Option<rusqlite::Connection> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn uptime_starts_at_zero() {
-        let state = AppState::new(AppConfig::default(), AgentState::ephemeral());
-        assert_eq!(state.uptime_secs(), 0);
-        assert_eq!(state.config.port, 17870);
-        assert_eq!(state.stats.total(), 0);
-    }
-}
+#[path = "app_state_tests.rs"]
+mod tests;

@@ -10,6 +10,7 @@ description = "狼人杀游戏引擎：纯逻辑状态机（发牌 / 夜晚行�
 serde.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
+macros.workspace = true
 
 [dev-dependencies]
 

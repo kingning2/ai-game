@@ -1,0 +1,5 @@
+error: #[agent_tool] 不支持参数类型 `Product`：仅支持 String/bool/整数/浮点 及其 Option/Vec 包装；复杂结构请拆为多个基础类型参数
+  --> tests/trybuild/fail_unsupported_type.rs:11:13
+   |
+11 |     filter: Product,
+   |             ^^^^^^^

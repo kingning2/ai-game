@@ -11,7 +11,9 @@
 use std::time::Duration;
 
 use agent::event::AgentEvent;
+use agent::message::{ToolCall, ToolChoice, ToolDefinition};
 use agent::{ChatMessage, ChatRequest, build_provider};
+use macros::agent_tool;
 use werewolf::{Action, CheckResult, GameEngine, GameEvent, Phase, PlayerId, Role};
 
 use crate::routes::werewolf::{log_new_events, render_event};
@@ -19,8 +21,8 @@ use state::{AppState, GameStatus};
 
 /// 相邻两步决策之间的停顿：给前端轮询留出渲染节奏，也压一压请求频率
 const STEP_PAUSE: Duration = Duration::from_millis(400);
-/// 喂入非法动作被引擎拒绝后，把局面重新问一轮 LLM 的重试次数
-const APPLY_RETRIES: usize = 1;
+/// 单步决策的最大对话轮数（强制工具 → 纠错回喂 → 再纠错，超限交规则兜底）
+const MAX_DECISION_TURNS: usize = 3;
 
 /// 开局（或恢复）后启动自动推进任务；状态非 Running 或已结算时立即退出
 pub fn spawn(state: &AppState, game_id: i64) {
@@ -93,24 +95,47 @@ async fn drive(state: &AppState, game_id: i64) {
     }
 }
 
-/// 一步决策：prompt → LLM（锁外）→ 解析 → apply（被拒回喂重试 / 兜底）
+/// 一步决策：多轮工具对话（强制 `speak`/`vote`/… 工具调用）→ 解析 → apply。
+///
+/// 每轮结果（含引擎拒绝原因）都作为对话历史回喂，模型能看到自己上一轮说了什么；
+/// 超限或 LLM 不可用时交规则兜底，保证局能推完
 async fn step(state: &AppState, game_id: i64, actor: PlayerId, context: DecisionContext) {
-    let mut reply = chat(state, &context, None).await;
-    for _ in 0..=APPLY_RETRIES {
-        let Some(action) = reply
-            .as_deref()
-            .and_then(|text| parse_action(&context, text))
-        else {
+    // 多轮历史：assistant(tool_calls) ↔ tool(results) 往返都在这里累积
+    let mut history = vec![
+        ChatMessage::system(system_prompt(&context)),
+        ChatMessage::user(user_prompt(&context)),
+    ];
+    for _ in 0..MAX_DECISION_TURNS {
+        let Some((text, calls)) = chat(state, &context, &history).await else {
             break;
         };
-        let rejection = apply(state, game_id, actor, action);
-        if rejection.is_none() {
-            return;
+        // 先解析再入历史：纠错消息要与 assistant 调用配对（tool_calls 后必须跟 tool 消息）
+        let action = parse_tool_action(&context, &calls).or_else(|| parse_action(&context, &text));
+        // assistant 回复入历史（带 calls 时结果必须用 tool 消息回喂）
+        if calls.is_empty() {
+            history.push(ChatMessage::assistant(text.clone()));
+        } else {
+            history.push(ChatMessage::assistant_with_tools(text, calls.clone()));
         }
-        // 引擎拒绝：把原因回喂再问一轮
-        reply = chat(state, &context, rejection.as_deref()).await;
+        let Some(action) = action else {
+            push_correction(
+                &mut history,
+                &calls,
+                "你的输出无法解析为游戏动作，请严格按工具参数填写后重新调用。",
+            );
+            continue;
+        };
+        match apply(state, game_id, actor, action) {
+            // 已推进，本步结束
+            None => return,
+            Some(rejection) => push_correction(
+                &mut history,
+                &calls,
+                &format!("游戏引擎拒绝了你的动作：{rejection}。请换一个合法动作。"),
+            ),
+        }
     }
-    // LLM 不可用 / 解析失败 / 始终被拒：规则兜底，保证局能推完
+    // LLM 不可用 / 始终无法解析 / 始终被拒：规则兜底，保证局能推完
     if let Some(fallback) = fallback_action(&context) {
         if apply(state, game_id, actor, fallback).is_some() {
             tracing::warn!(
@@ -121,6 +146,14 @@ async fn step(state: &AppState, game_id: i64, actor: PlayerId, context: Decision
         }
     } else {
         tracing::warn!(actor, kind = context.kind, "无规则兜底，等待下一轮");
+    }
+}
+
+/// 把纠错消息接进历史：有工具调用时用 tool 结果回喂（协议硬性配对），否则用 user 消息
+fn push_correction(history: &mut Vec<ChatMessage>, calls: &[ToolCall], correction: &str) {
+    match calls.first() {
+        Some(call) => history.push(ChatMessage::tool_result(&call.id, correction)),
+        None => history.push(ChatMessage::user(correction)),
     }
 }
 
@@ -142,10 +175,6 @@ fn apply(state: &AppState, game_id: i64, actor: PlayerId, action: Action) -> Opt
         })
         .unwrap_or_default()
 }
-
-// ---------------------------------------------------------------------------
-// 决策上下文（锁内收集的快照）
-// ---------------------------------------------------------------------------
 
 /// 一步决策所需的全部快照信息
 struct DecisionContext {
@@ -224,44 +253,44 @@ fn visible_to(event: &GameEvent, is_wolf: bool) -> bool {
 // LLM 调用（锁外）
 // ---------------------------------------------------------------------------
 
-/// 单轮决策对话。`rejection` 非空时作为追加纠错消息（引擎拒绝原因回喂）。
+/// 一轮决策对话：带工具定义（强制工具调用），返回（文本回复, 工具调用列表）。
+///
+/// 历史由调用方累积（多轮往返），本函数只负责发请求 + 收事件
 async fn chat(
     state: &AppState,
     context: &DecisionContext,
-    rejection: Option<&str>,
-) -> Option<String> {
+    history: &[ChatMessage],
+) -> Option<(String, Vec<ToolCall>)> {
     let global = state.agent.config();
     let config = state.roster.resolve(&context.name, &global);
     let provider = build_provider(&config).ok()?;
-    let mut messages = vec![
-        ChatMessage::system(system_prompt(context)),
-        ChatMessage::user(user_prompt(context)),
-    ];
-    if let Some(rejection) = rejection {
-        messages.push(ChatMessage::user(format!(
-            "你的上一个输出被游戏引擎拒绝了：{rejection}。请重新只输出一个合法 JSON。"
-        )));
-    }
     let request = ChatRequest {
         model: None,
-        messages,
+        messages: history.to_vec(),
         thinking: config.thinking,
+        // 决策必须是结构化动作：一个工具 + Required 强制调用；
+        // 网关不支持 tool_choice 时多数会降级为 auto，文本 JSON 契约仍能兜底
+        tools: vec![tool_for(context)],
+        tool_choice: ToolChoice::Required,
     };
     let mut stream = provider.chat_stream(request).await.ok()?;
-    // 决策级超时：比 client 整体超时更快兜底，单次决策 90s 内不出果就交给规则 fallback
+    // 决策级超时：比 client 整体超时更快兜底，单轮 90s 内不出果就交下一轮/规则兜底
     let deadline = std::time::Duration::from_secs(90);
-    let reply = tokio::time::timeout(deadline, async {
+    let (reply, calls) = tokio::time::timeout(deadline, async {
         let mut reply = String::new();
+        let mut calls = Vec::new();
         while let Ok(Some(event)) = stream.next_event().await {
-            if let AgentEvent::TextDelta { delta } = event {
-                reply.push_str(&delta);
+            match event {
+                AgentEvent::TextDelta { delta } => reply.push_str(&delta),
+                AgentEvent::ToolCalls { calls: batch } => calls.extend(batch),
+                _ => {}
             }
         }
-        reply
+        (reply, calls)
     })
     .await
     .ok()?;
-    Some(reply)
+    Some((reply, calls))
 }
 
 // ---------------------------------------------------------------------------
@@ -361,59 +390,206 @@ fn check_text(result: CheckResult) -> &'static str {
 // 回复解析（宽松取首个 JSON 对象）
 // ---------------------------------------------------------------------------
 
-/// 从 LLM 回复解析动作；失败返回 `None`（由调用方兜底）
-fn parse_action(context: &DecisionContext, reply: &str) -> Option<Action> {
-    let object = first_json_object(reply)?;
-    match context.kind {
-        "白天发言" => {
-            let text = string_field(&object, "text")?;
-            (!text.trim().is_empty()).then_some(Action::Speech { text })
+// ---------------------------------------------------------------------------
+// 工具定义与工具调用解析（tool_calls 标准优先，文本 JSON 兜底）
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 工具契约（#[agent_tool] 生成 definition/parse；场景映射与合法性校验留在下方）
+// ---------------------------------------------------------------------------
+
+/// 座位号宽容解析（可空目标）：数字或数字字符串均可（弱模型兜底）；缺失/null/非法 → None
+fn lenient_target<'de, D>(deserializer: D) -> Result<Option<u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize as _;
+    match Option::<serde_json::Value>::deserialize(deserializer)? {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Number(num)) => Ok(num.as_u64().and_then(|n| u8::try_from(n).ok())),
+        Some(serde_json::Value::String(text)) => Ok(text.trim().parse().ok()),
+        Some(_) => Ok(None),
+    }
+}
+
+/// 座位号宽容解析（必填目标）：接受数字或数字字符串；缺失/null/非法 → 解析失败 → 纠错重问
+fn lenient_required_target<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize as _;
+    match Option::<serde_json::Value>::deserialize(deserializer)? {
+        Some(serde_json::Value::Number(num)) => num
+            .as_u64()
+            .and_then(|n| u8::try_from(n).ok())
+            .ok_or_else(|| serde::de::Error::custom("无效座位号")),
+        Some(serde_json::Value::String(text)) => {
+            text.trim().parse().map_err(serde::de::Error::custom)
         }
-        "投票" => Some(Action::Vote {
-            target: target_field(&object, context),
+        _ => Err(serde::de::Error::custom("缺少座位号")),
+    }
+}
+
+#[agent_tool(
+    name = "speak",
+    description = "提交你的白天发言。要 4~6 句（100~200 字），有具体推理依据：解读死讯、指出怀疑对象及理由、回应他人、表明投票意向，像真人口语"
+)]
+struct SpeakTool {
+    #[param(description = "发言内容")]
+    text: String,
+}
+
+#[agent_tool(name = "vote", description = "提交你的放逐投票。弃票把 target 留空")]
+struct VoteTool {
+    #[param(description = "要放逐的座位号，弃票留空")]
+    #[serde(default, deserialize_with = "lenient_target")]
+    target: Option<u8>,
+}
+
+#[agent_tool(
+    name = "wolf_chat",
+    description = "狼队夜间耳语：给队友传达刀口意向或身份判断。沉默把 text 留空"
+)]
+struct WolfChatTool {
+    #[param(description = "耳语内容，沉默留空")]
+    #[serde(default)]
+    text: Option<String>,
+}
+
+#[agent_tool(
+    name = "wolf_kill",
+    description = "狼队今晚要刀的玩家。注意别刀自己队友"
+)]
+struct WolfKillTool {
+    #[param(description = "要刀的座位号，不能选自己和队友")]
+    #[serde(deserialize_with = "lenient_required_target")]
+    target: u8,
+}
+
+#[agent_tool(name = "seer_check", description = "查验一名玩家的身份（好人/狼人）")]
+struct SeerCheckTool {
+    #[param(description = "要查验的座位号，不能选自己")]
+    #[serde(deserialize_with = "lenient_required_target")]
+    target: u8,
+}
+
+#[agent_tool(
+    name = "witch_act",
+    description = "使用药水：save=是否用解药救今晚刀口；target=毒药目标（可留空）。解药毒药各只能用一次，同晚不能同时用"
+)]
+struct WitchActTool {
+    #[param(description = "是否使用解药")]
+    save: bool,
+    #[param(description = "毒药目标座位号，不毒留空")]
+    #[serde(default, deserialize_with = "lenient_target")]
+    target: Option<u8>,
+}
+
+#[agent_tool(
+    name = "guard_protect",
+    description = "守护一名玩家今晚免受狼人攻击。不能连续两晚守同一人，可不守"
+)]
+struct GuardProtectTool {
+    #[param(description = "要守护的座位号，不守留空")]
+    #[serde(default, deserialize_with = "lenient_target")]
+    target: Option<u8>,
+}
+
+#[agent_tool(
+    name = "knight_duel",
+    description = "与一名玩家决斗：验出狼人则对方死，否则你死。谨慎使用，可放弃"
+)]
+struct KnightDuelTool {
+    #[param(description = "决斗对象座位号，放弃留空")]
+    #[serde(default, deserialize_with = "lenient_target")]
+    target: Option<u8>,
+}
+
+#[agent_tool(
+    name = "hunter_shot",
+    description = "出局时开枪带走一名玩家。不确定目标可放弃，误伤好人会亏"
+)]
+struct HunterShotTool {
+    #[param(description = "开枪目标座位号，放弃留空")]
+    #[serde(default, deserialize_with = "lenient_target")]
+    target: Option<u8>,
+}
+
+/// 当前决策场景的工具契约（场景/角色 → 工具的映射是业务决策，保留显式 match）
+fn tool_for(context: &DecisionContext) -> ToolDefinition {
+    let night = match context.role {
+        Role::Seer => SeerCheckTool::definition(),
+        Role::Witch => WitchActTool::definition(),
+        Role::Guard => GuardProtectTool::definition(),
+        _ => WolfKillTool::definition(),
+    };
+    match context.kind {
+        "白天发言" => SpeakTool::definition(),
+        "投票" => VoteTool::definition(),
+        "狼人夜聊" => WolfChatTool::definition(),
+        "狼人行动" => WolfKillTool::definition(),
+        "夜晚行动" => night,
+        "骑士决斗" => KnightDuelTool::definition(),
+        "猎人开枪" => HunterShotTool::definition(),
+        _ => VoteTool::definition(),
+    }
+}
+
+/// 工具参数/文本 JSON → 动作。工具调用与文本兜底两种载体同构
+/// （{"text":…}/{"target":…}），共用契约 struct 解析；
+/// 身份合法性（存活/非自己）在这里统一校验
+fn action_from_args(context: &DecisionContext, tool_name: &str, arguments: &str) -> Option<Action> {
+    let alive_target =
+        |target: Option<u8>| target.filter(|id| *id != context.seat && context.alive.contains(id));
+    match tool_name {
+        "speak" => {
+            let tool = SpeakTool::parse(arguments)?;
+            let text = tool.text.trim().to_string();
+            (!text.is_empty()).then_some(Action::Speech { text })
+        }
+        "vote" => VoteTool::parse(arguments).map(|tool| Action::Vote {
+            target: alive_target(tool.target),
         }),
-        "狼人夜聊" => Some(Action::WolfChat {
-            text: string_field(&object, "text").filter(|t| !t.trim().is_empty()),
+        "wolf_chat" => WolfChatTool::parse(arguments).map(|tool| Action::WolfChat {
+            text: tool.text.filter(|t| !t.trim().is_empty()),
         }),
-        "狼人行动" => Some(Action::WerewolfKill {
-            target: target_field(&object, context)?,
+        "wolf_kill" => WolfKillTool::parse(arguments)
+            .map(|tool| alive_target(Some(tool.target)))
+            .and_then(|target| target.map(|target| Action::WerewolfKill { target })),
+        "seer_check" => SeerCheckTool::parse(arguments)
+            .map(|tool| alive_target(Some(tool.target)))
+            .and_then(|target| target.map(|target| Action::SeerCheck { target })),
+        "witch_act" => WitchActTool::parse(arguments).map(|tool| Action::WitchAct {
+            save: tool.save,
+            poison: alive_target(tool.target),
         }),
-        "夜晚行动" => night_action(context, &object),
-        "骑士决斗" => Some(Action::KnightDuel {
-            target: target_field(&object, context),
+        "guard_protect" => GuardProtectTool::parse(arguments).map(|tool| Action::GuardProtect {
+            target: alive_target(tool.target),
         }),
-        "猎人开枪" => Some(Action::HunterShot {
-            target: target_field(&object, context),
+        "knight_duel" => KnightDuelTool::parse(arguments).map(|tool| Action::KnightDuel {
+            target: alive_target(tool.target),
+        }),
+        "hunter_shot" => HunterShotTool::parse(arguments).map(|tool| Action::HunterShot {
+            target: alive_target(tool.target),
         }),
         _ => None,
     }
 }
 
-/// 夜晚行动按身份分派：女巫是 `{"save","poison"}`，其余是 `{"target"}`
-fn night_action(
-    context: &DecisionContext,
-    object: &serde_json::Map<String, serde_json::Value>,
-) -> Option<Action> {
-    match context.role {
-        Role::Witch => {
-            let save = object
-                .get("save")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            let poison = target_field(object, context);
-            Some(Action::WitchAct { save, poison })
-        }
-        Role::Guard => Some(Action::GuardProtect {
-            target: target_field(object, context),
-        }),
-        Role::Seer => Some(Action::SeerCheck {
-            target: target_field(object, context)?,
-        }),
-        Role::Werewolf => Some(Action::WerewolfKill {
-            target: target_field(object, context)?,
-        }),
-        _ => None,
-    }
+/// 优先从模型的 tool_calls 解析动作；无匹配工具或参数非法返回 `None`（纠错重问兜底）
+fn parse_tool_action(context: &DecisionContext, calls: &[ToolCall]) -> Option<Action> {
+    let expected = tool_for(context).name;
+    let call = calls.iter().find(|call| call.name == expected)?;
+    action_from_args(context, expected.as_str(), &call.arguments)
+}
+
+/// 从 LLM 文本回复解析动作（工具调用失败时的兜底；与工具参数同构，复用同一套契约）
+fn parse_action(context: &DecisionContext, reply: &str) -> Option<Action> {
+    let object = first_json_object(reply)?;
+    let expected = tool_for(context).name;
+    serde_json::to_string(&object)
+        .ok()
+        .and_then(|args| action_from_args(context, expected.as_str(), &args))
 }
 
 /// 从 LLM 回复宽松解析首个 `{...}` JSON 对象（mvp 投票复用）
@@ -424,27 +600,6 @@ pub(crate) fn first_json_object(reply: &str) -> Option<serde_json::Map<String, s
         .ok()?
         .as_object()
         .cloned()
-}
-
-/// 取对象中某 key 的字符串值
-fn string_field(object: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<String> {
-    object
-        .get(key)
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-}
-
-/// 解析座位号字段；缺失 / null / 非数字 / 越界 / 指向死者 → `None`（调用方决定是否可空）
-fn target_field(
-    object: &serde_json::Map<String, serde_json::Value>,
-    context: &DecisionContext,
-) -> Option<PlayerId> {
-    let target: PlayerId = match object.get("target")? {
-        serde_json::Value::Number(num) => num.as_u64()?.try_into().ok()?,
-        serde_json::Value::String(text) => text.trim().parse().ok()?,
-        _ => return None,
-    };
-    (target != context.seat && context.alive.contains(&target)).then_some(target)
 }
 
 // ---------------------------------------------------------------------------
@@ -460,8 +615,11 @@ fn fallback_action(context: &DecisionContext) -> Option<Action> {
         .filter(|id| *id != context.seat)
         .collect();
     match context.kind {
+        // 兜底发言不提身份（旧文案「我是狼人，过」会自爆）
         "白天发言" => Some(Action::Speech {
-            text: format!("我是{}，过。", context.role.display_name()),
+            text:
+                "这轮我先听大家的推理，目前我倾向跟票发言最有破绽的人，后面有更硬的逻辑我再改票。"
+                    .to_string(),
         }),
         "投票" => Some(Action::Vote {
             target: others.first().copied(),
@@ -495,3 +653,6 @@ fn fallback_action(context: &DecisionContext) -> Option<Action> {
         _ => None,
     }
 }
+#[cfg(test)]
+#[path = "autoplay_tests.rs"]
+mod tests;

@@ -1,0 +1,7 @@
+error: 缺少 description = "工具描述"
+ --> tests/trybuild/fail_missing_description.rs:4:1
+  |
+4 | #[agent_tool(name = "incomplete")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `agent_tool` (in Nightly builds, run with -Z macro-backtrace for more info)

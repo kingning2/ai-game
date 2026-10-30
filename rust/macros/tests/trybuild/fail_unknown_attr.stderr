@@ -1,0 +1,5 @@
+error: 未知属性 `unknown_key`，支持 name / description
+ --> tests/trybuild/fail_unknown_attr.rs:4:47
+  |
+4 | #[agent_tool(name = "dup", description = "x", unknown_key = "y")]
+  |                                               ^^^^^^^^^^^

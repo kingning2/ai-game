@@ -1,0 +1,5 @@
+error: #[game_event] 只能作用于 enum（游戏事件集合）
+ --> tests/trybuild/fail_game_event_struct.rs:5:8
+  |
+5 | struct NotAnEnum {
+  |        ^^^^^^^^^

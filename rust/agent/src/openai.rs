@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::event::{AgentEvent, StopReason, Usage};
-use crate::message::ChatRequest;
+use crate::message::{ChatMessage, ChatRequest, Role, ToolChoice, ToolDefinition};
 use crate::provider::{ChatStreamFuture, ProviderSettings, http_client};
 use crate::stream::{ChatStream, FrameDecoder, StreamState, ensure_success};
 use crate::{AgentError, AgentResult};
@@ -35,6 +35,60 @@ impl OpenAiProvider {
     }
 }
 
+/// 统一消息 → OpenAI `messages` 数组。
+/// 多轮工具往返：assistant 带 `tool_calls`；结果用 `role:"tool"` + `tool_call_id`
+pub(crate) fn to_protocol_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+    messages
+        .iter()
+        .map(|message| {
+            let mut object =
+                serde_json::json!({ "role": message.role, "content": message.content });
+            if !message.tool_calls.is_empty() {
+                object["tool_calls"] = serde_json::json!(
+                    message
+                        .tool_calls
+                        .iter()
+                        .map(|call| serde_json::json!({
+                            "id": call.id,
+                            "type": "function",
+                            "function": { "name": call.name, "arguments": call.arguments },
+                        }))
+                        .collect::<Vec<_>>()
+                );
+                // 部分 OpenAI 兼容网关拒绝 tool_calls 消息带 content 字段（省略比空串更稳）
+                if message.content.is_empty() {
+                    object["content"] = serde_json::Value::Null;
+                }
+            }
+            if message.role == Role::Tool {
+                // 本层每次只装一条结果（[ChatMessage::tool_result] 的约定），取第一个
+                if let Some(result) = message.tool_results.first() {
+                    object["tool_call_id"] = serde_json::json!(result.call_id);
+                    object["content"] = serde_json::json!(result.content);
+                }
+            }
+            object
+        })
+        .collect()
+}
+
+/// 统一工具定义 → OpenAI `tools` 数组（`{"type":"function","function":{…}}`）
+pub(crate) fn to_protocol_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .map(|tool| {
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            })
+        })
+        .collect()
+}
+
 impl crate::provider::AgentProvider for OpenAiProvider {
     fn id(&self) -> &'static str {
         "openai"
@@ -48,6 +102,8 @@ impl crate::provider::AgentProvider for OpenAiProvider {
                 model,
                 messages,
                 thinking,
+                tools,
+                tool_choice,
             } = request;
             let model = model.unwrap_or_else(|| self.settings.model.clone());
 
@@ -55,7 +111,7 @@ impl crate::provider::AgentProvider for OpenAiProvider {
             // 部分模型不支持 disabled 时由网关报 400，本层透传意图不吞错误）
             let mut body = serde_json::json!({
                 "model": model,
-                "messages": messages,
+                "messages": to_protocol_messages(&messages),
                 "stream": true,
                 "max_tokens": self.max_tokens,
                 // 请求最后一个 chunk 附带用量（OpenAI 2024+ 规范，主流网关都支持）
@@ -63,6 +119,13 @@ impl crate::provider::AgentProvider for OpenAiProvider {
             });
             if let Some(mode) = thinking {
                 body["thinking"] = serde_json::json!({ "type": mode });
+            }
+            if !tools.is_empty() {
+                body["tools"] = serde_json::json!(to_protocol_tools(&tools));
+                body["tool_choice"] = serde_json::json!(match tool_choice {
+                    ToolChoice::Auto => "auto",
+                    ToolChoice::Required => "required",
+                });
             }
 
             let response = self
@@ -106,6 +169,22 @@ struct OpenAiDelta {
     reasoning_content: Option<String>,
     /// OpenRouter 系推理字段
     reasoning: Option<String>,
+    /// 流式工具调用分片（乱序到达，按 index 聚合）
+    #[serde(default)]
+    tool_calls: Vec<OpenAiToolCallDelta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiToolCallDelta {
+    index: usize,
+    id: Option<String>,
+    function: Option<OpenAiToolFunctionDelta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiToolFunctionDelta {
+    name: Option<String>,
+    arguments: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -131,7 +210,15 @@ pub(crate) fn decode_frame(state: &mut StreamState, data: &str) -> AgentResult<V
             .as_deref()
             .map(StopReason::from_protocol)
             .unwrap_or(StopReason::EndTurn);
-        return finish(state, vec![AgentEvent::Done { stop_reason }]);
+        // 工具调用先于 Done 发出（消费方在 Done 前收齐完整调用列表）
+        let mut events = Vec::new();
+        if matches!(stop_reason, StopReason::ToolCalls) {
+            events.push(AgentEvent::ToolCalls {
+                calls: state.take_tool_calls(),
+            });
+        }
+        events.push(AgentEvent::Done { stop_reason });
+        return finish(state, events);
     }
 
     let chunk: OpenAiChunk = serde_json::from_str(data)
@@ -162,6 +249,21 @@ pub(crate) fn decode_frame(state: &mut StreamState, data: &str) -> AgentResult<V
         if let Some(delta) = delta.content.filter(|delta| !delta.is_empty()) {
             events.push(AgentEvent::TextDelta { delta });
         }
+        // 工具调用分片：id/name/arguments 都是增量，按 index 拼到对应槽
+        for fragment in delta.tool_calls {
+            let slot = state.tool_slot(fragment.index);
+            if let Some(id) = fragment.id {
+                slot.id.push_str(&id);
+            }
+            if let Some(function) = fragment.function {
+                if let Some(name) = function.name {
+                    slot.name.push_str(&name);
+                }
+                if let Some(arguments) = function.arguments {
+                    slot.arguments.push_str(&arguments);
+                }
+            }
+        }
         if let Some(reason) = choice.finish_reason {
             state.stop_reason = Some(reason);
         }
@@ -179,120 +281,5 @@ fn finish(state: &mut StreamState, events: Vec<AgentEvent>) -> AgentResult<Vec<A
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn decode(state: &mut StreamState, data: &str) -> Vec<AgentEvent> {
-        decode_frame(state, data).unwrap()
-    }
-
-    #[test]
-    fn text_delta() {
-        let mut state = StreamState::default();
-        let events = decode(
-            &mut state,
-            r#"{"id":"1","choices":[{"index":0,"delta":{"content":"你好"},"finish_reason":null}]}"#,
-        );
-        assert_eq!(
-            events,
-            [AgentEvent::TextDelta {
-                delta: "你好".into()
-            }]
-        );
-    }
-
-    /// DeepSeek reasoning_content 优先，OpenRouter reasoning 兜底
-    #[test]
-    fn thinking_delta_both_field_names() {
-        let mut state = StreamState::default();
-        let events = decode(
-            &mut state,
-            r#"{"choices":[{"delta":{"reasoning_content":"想一下"}}]}"#,
-        );
-        assert_eq!(
-            events,
-            [AgentEvent::ThinkingDelta {
-                delta: "想一下".into()
-            }]
-        );
-
-        let events = decode(
-            &mut state,
-            r#"{"choices":[{"delta":{"reasoning":"再想想"}}]}"#,
-        );
-        assert_eq!(
-            events,
-            [AgentEvent::ThinkingDelta {
-                delta: "再想想".into()
-            }]
-        );
-    }
-
-    /// 空串增量不发事件（部分网关会发 content:"" 占位帧）
-    #[test]
-    fn empty_delta_skipped() {
-        let mut state = StreamState::default();
-        let events = decode(&mut state, r#"{"choices":[{"delta":{"content":""}}]}"#);
-        assert!(events.is_empty());
-    }
-
-    /// finish_reason 记在 state，[DONE] 时合成 Done
-    #[test]
-    fn done_uses_last_finish_reason() {
-        let mut state = StreamState::default();
-        decode(
-            &mut state,
-            r#"{"choices":[{"delta":{"content":"尾"},"finish_reason":"length"}]}"#,
-        );
-        let events = decode(&mut state, "[DONE]");
-        assert_eq!(
-            events,
-            [AgentEvent::Done {
-                stop_reason: StopReason::MaxTokens
-            }]
-        );
-
-        // 重复结束帧被吞
-        assert!(decode(&mut state, "[DONE]").is_empty());
-    }
-
-    /// include_usage 的用量帧：choices 为空数组 + usage 全量
-    #[test]
-    fn usage_chunk() {
-        let mut state = StreamState::default();
-        let events = decode(
-            &mut state,
-            r#"{"choices":[],"usage":{"prompt_tokens":6,"completion_tokens":9}}"#,
-        );
-        assert_eq!(
-            events,
-            [AgentEvent::Usage {
-                usage: Usage {
-                    input_tokens: 6,
-                    output_tokens: 9
-                }
-            }]
-        );
-    }
-
-    /// 流中错误帧 → Err（HTTP 已 200，只能走 Err 分支）
-    #[test]
-    fn in_stream_error_is_err() {
-        let mut state = StreamState::default();
-        let err = decode_frame(
-            &mut state,
-            r#"{"error":{"message":"模型不存在","type":"invalid_request_error"}}"#,
-        )
-        .unwrap_err();
-        assert!(matches!(err, AgentError::UpstreamEvent(message) if message == "模型不存在"));
-    }
-
-    /// 未知 JSON → Protocol 错误（可定位是哪段内容）
-    #[test]
-    fn malformed_frame_is_protocol_error() {
-        let mut state = StreamState::default();
-        let err = decode_frame(&mut state, "{not json").unwrap_err();
-        assert!(matches!(err, AgentError::Protocol(_)));
-        assert!(err.to_string().contains("openai chunk"));
-    }
-}
+#[path = "openai_tests.rs"]
+mod tests;

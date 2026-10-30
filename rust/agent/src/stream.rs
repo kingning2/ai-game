@@ -1,13 +1,22 @@
 use std::collections::VecDeque;
 
 use crate::event::AgentEvent;
+use crate::message::ToolCall;
 use crate::sse::SseDecoder;
 use crate::{AgentError, AgentResult};
 
 /// 单帧 data 负载 → 统一事件的解码函数（每协议一个，见 openai / anthropic 模块）
 pub(crate) type FrameDecoder = fn(&mut StreamState, &str) -> AgentResult<Vec<AgentEvent>>;
 
-/// 跨帧解码状态：用量/结束原因分散在不同帧里，收齐才能合成事件
+/// 跨帧聚合中的一个工具调用分片（openai 按 `index` 补位，anthropic 按 block index）
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct ToolCallDraft {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// 跨帧解码状态：用量/结束原因/工具调用分片分散在不同帧里，收齐才能合成事件
 #[derive(Debug, Default)]
 pub(crate) struct StreamState {
     /// anthropic message_start 带的输入用量
@@ -16,6 +25,31 @@ pub(crate) struct StreamState {
     pub stop_reason: Option<String>,
     /// 已发过 Done（部分兼容网关会重复发结束帧，去重）
     pub done: bool,
+    /// 工具调用分片（增量 id/name，arguments 字符串拼接）
+    pub tool_calls: Vec<ToolCallDraft>,
+}
+
+impl StreamState {
+    /// 定位（必要时补位）index 对应的聚合槽，供各协议写入分片
+    pub(crate) fn tool_slot(&mut self, index: usize) -> &mut ToolCallDraft {
+        if self.tool_calls.len() <= index {
+            self.tool_calls.resize(index + 1, ToolCallDraft::default());
+        }
+        &mut self.tool_calls[index]
+    }
+
+    /// 聚合完毕 → 完整 ToolCall 列表（结束帧时调用；非 tool_calls 结束时为空）
+    pub(crate) fn take_tool_calls(&mut self) -> Vec<ToolCall> {
+        // 分片序即调用序，draft 转正式调用不丢信息
+        self.tool_calls
+            .drain(..)
+            .map(|draft| ToolCall {
+                id: draft.id,
+                name: draft.name,
+                arguments: draft.arguments,
+            })
+            .collect()
+    }
 }
 
 /// 一次流式对话的事件流：pull 式消费 `next_event().await`
@@ -87,50 +121,5 @@ pub(crate) async fn ensure_success(response: reqwest::Response) -> AgentResult<r
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::event::StopReason;
-
-    /// 测试用解码器：把 data 当文本 delta，"[DONE]" 发 Done
-    fn test_decode(state: &mut StreamState, data: &str) -> AgentResult<Vec<AgentEvent>> {
-        if data == "[DONE]" {
-            state.done = true;
-            return Ok(vec![AgentEvent::Done {
-                stop_reason: StopReason::EndTurn,
-            }]);
-        }
-        Ok(vec![AgentEvent::TextDelta {
-            delta: data.to_string(),
-        }])
-    }
-
-    #[tokio::test]
-    async fn yields_events_and_stops_after_done() {
-        // 内存 body 走通 decoder 管道；真 socket / 分 chunk / 中断场景在 mock e2e 测试里
-        let body = concat!(
-            "data: 你\n\ndata: 好\n\ndata: [DONE]\n\n",
-            "data: 不该出现的帧\n\n",
-        );
-        let response = reqwest::Response::from(
-            http::Response::builder()
-                .status(200)
-                .header("content-type", "text/event-stream")
-                .body(body.to_string())
-                .unwrap(),
-        );
-        let mut stream = ChatStream::new(response, test_decode);
-
-        let mut texts = Vec::new();
-        let mut done = false;
-        while let Some(event) = stream.next_event().await.unwrap() {
-            match event {
-                AgentEvent::TextDelta { delta } => texts.push(delta),
-                AgentEvent::Done { .. } => done = true,
-                _ => panic!("不该出现的事件: {event:?}"),
-            }
-        }
-        // 收到 Done 即停，后面的帧不再消费
-        assert_eq!(texts, ["你", "好"]);
-        assert!(done);
-    }
-}
+#[path = "stream_tests.rs"]
+mod tests;

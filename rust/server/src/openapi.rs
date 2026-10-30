@@ -49,7 +49,9 @@ use crate::routes::{agent_config, health, info, leaderboard, rooms, roster, tts,
         (name = "werewolf", description = "狼人杀对局控制面：开始 / 暂停 / 继续 / 结束 / 状态查询；所有 POST 成功与 GET 均返回最新 GameStatusDto"),
         (name = "tts", description = "本地语音合成： kokoro 模型装配（status/setup）与台词合成（speak，返回 audio/wav）"),
         (name = "system", description = "探活与服务元信息"),
-    )
+    ),
+    // IntoParams 查询参数也必须在此注册，否则只生成 $ref 而无 schema 定义（文档与 codegen 都会悬空）
+    components(schemas(werewolf::GameQuery, werewolf::MemoryQuery))
 )]
 pub struct ApiDoc;
 
@@ -60,4 +62,13 @@ pub async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/api-docs/openapi.json", get(openapi_json))
+}
+
+/// 离线导出契约：`cargo test -p server export_openapi` 把 openapi.json 写到 apps/web/，
+/// 供前端 openapi-typescript 生成 schema.gen.ts（跑 `pnpm codegen` 一键完成两步）。
+#[test]
+fn export_openapi() {
+    let json = serde_json::to_vec_pretty(&ApiDoc::openapi()).expect("serialize OpenAPI document");
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/web/openapi.json");
+    std::fs::write(path, json).expect("write openapi.json");
 }

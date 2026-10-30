@@ -5,7 +5,7 @@
 
 use crate::AgentError;
 use crate::event::{AgentEvent, StopReason, Usage};
-use crate::message::{ChatMessage, ChatRequest};
+use crate::message::{ChatMessage, ChatRequest, ToolCall};
 use crate::provider::{AgentProvider, ProviderSettings};
 use crate::{anthropic, openai};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -77,9 +77,8 @@ fn anthropic_provider(base_url: String) -> anthropic::AnthropicProvider {
 
 fn user_request() -> ChatRequest {
     ChatRequest {
-        model: None,
         messages: vec![ChatMessage::user("你好")],
-        thinking: None,
+        ..ChatRequest::default()
     }
 }
 
@@ -92,22 +91,30 @@ fn request_body(raw: &str) -> serde_json::Value {
 async fn drain<P: AgentProvider>(
     provider: &P,
     request: ChatRequest,
-) -> crate::AgentResult<(String, String, Option<Usage>, Option<StopReason>)> {
+) -> crate::AgentResult<(
+    String,
+    String,
+    Option<Usage>,
+    Vec<ToolCall>,
+    Option<StopReason>,
+)> {
     let mut stream = provider.chat_stream(request).await?;
     let (mut text, mut thinking, mut usage, mut done) = (String::new(), String::new(), None, None);
+    let mut tool_calls = Vec::new();
     loop {
         match stream.next_event().await {
             Ok(Some(event)) => match event {
                 AgentEvent::TextDelta { delta } => text.push_str(&delta),
                 AgentEvent::ThinkingDelta { delta } => thinking.push_str(&delta),
                 AgentEvent::Usage { usage: captured } => usage = Some(captured),
+                AgentEvent::ToolCalls { calls: captured } => tool_calls = captured,
                 AgentEvent::Done { stop_reason } => done = Some(stop_reason),
             },
             Ok(None) => break,
             Err(error) => return Err(error),
         }
     }
-    Ok((text, thinking, usage, done))
+    Ok((text, thinking, usage, tool_calls, done))
 }
 
 // ===== OpenAI 协议 =====
@@ -124,9 +131,10 @@ async fn openai_full_stream() {
     );
     let (base_url, mut requests) = spawn_mock(format!("{SSE_OK}{body}")).await;
 
-    let (text, thinking, usage, done) = drain(&openai_provider(base_url), user_request())
-        .await
-        .unwrap();
+    let (text, thinking, usage, _tool_calls, done) =
+        drain(&openai_provider(base_url), user_request())
+            .await
+            .unwrap();
     assert_eq!(text, "你好");
     assert_eq!(thinking, "想想");
     assert_eq!(
@@ -269,9 +277,10 @@ async fn anthropic_full_stream() {
     );
     let (base_url, mut requests) = spawn_mock(format!("{SSE_OK}{body}")).await;
 
-    let (text, thinking, usage, done) = drain(&anthropic_provider(base_url), user_request())
-        .await
-        .unwrap();
+    let (text, thinking, usage, _tool_calls, done) =
+        drain(&anthropic_provider(base_url), user_request())
+            .await
+            .unwrap();
     assert_eq!(text, "答");
     assert_eq!(thinking, "思考");
     assert_eq!(
@@ -302,13 +311,13 @@ async fn anthropic_system_extracted_and_roles_merged() {
 
     let request = ChatRequest {
         model: Some("claude-x".into()),
-        thinking: None,
         messages: vec![
             ChatMessage::system("规则A"),
             ChatMessage::user("问1"),
             ChatMessage::user("问2"),
             ChatMessage::assistant("答"),
         ],
+        ..ChatRequest::default()
     };
     drain(&anthropic_provider(base_url), request).await.unwrap();
 
@@ -317,7 +326,11 @@ async fn anthropic_system_extracted_and_roles_merged() {
     assert_eq!(payload["model"], "claude-x"); // 显式 model 覆盖默认
     let turns = payload["messages"].as_array().unwrap();
     assert_eq!(turns.len(), 2); // user+user 合并，assistant 独立
-    assert_eq!(turns[0]["content"], "问1\n\n问2");
+    // 合并为同一 user turn 的两个 text block
+    let blocks = turns[0]["content"].as_array().unwrap();
+    assert_eq!(blocks[0]["type"], "text");
+    assert_eq!(blocks[0]["text"], "问1");
+    assert_eq!(blocks[1]["text"], "问2");
 }
 
 #[tokio::test]

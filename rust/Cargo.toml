@@ -10,6 +10,7 @@ members = [
   "games/werewolf",
   "memory",
   "db",
+  "macros",
 ]
 
 # workspace 级 profile（成员里的 [profile.*] 会被 cargo 忽略）
@@ -25,13 +26,15 @@ strip = true
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
+# Stream trait（axum SSE 响应体；axum 自身也依赖，无额外成本）
+futures-core = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # 统一版本
 # - "net"：TcpListener；"macros"：#[tokio::main]/#[tokio::test]；"time"：超时/Elapsed
 # - "signal"：优雅关闭（Ctrl+C / 控制台关闭事件）
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time", "signal"] }
+tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-thread", "time", "signal"] }
 # 接口文档自动生成（OpenAPI 3.x JSON，供 Apifox 导入）
 utoipa = "5"
 # 平台配置目录定位
@@ -46,6 +49,10 @@ tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 rand = "0.9"
 uuid = { version = "1.28", features = ["v4"] }
+# 过程宏三件套（macros 包专用）
+proc-macro2 = "1"
+quote = "1"
+syn = "2"
 
 # 内部 Workspace 包
 utils = { path = "utils" }
@@ -55,6 +62,7 @@ werewolf = { path = "games/werewolf" }
 memory = { path = "memory" }
 tts = { path = "tts" }
 db = { path = "db" }
+macros = { path = "macros" }
 
 # 全 workspace 统一包元数据（各 member 用 KEY.workspace = true 继承）
 [workspace.package]
