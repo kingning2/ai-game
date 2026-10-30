@@ -34,3 +34,5 @@ game-events（GameEvent 业务事实流）   game-ecs（bevy_ecs 0.20.1：组件
 ## 交付验收（rust/ 改动）
 
 `cargo build --workspace && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings` 全绿，加 `/tmp/manifest_lint . --strict && /tmp/dep_audit . --strict`（AGENTS.md Rust 节）。涉及 openapi 契约的再跑 `pnpm build && pnpm typecheck`。
+
+**测试组织**：单元测试一律放独立的 `*_tests.rs` 文件（源文件底部 `#[cfg(test)] #[path = "xxx_tests.rs"] mod tests;` 声明，测试文件 `use super::*;`），禁止内联 `mod tests`——对齐 `tts/src/doubao_tests.rs`、`games/werewolf/src/*_tests.rs` 既有模式；集成/黄金测试放 `tests/` 目录。
