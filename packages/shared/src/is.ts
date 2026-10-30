@@ -42,9 +42,7 @@ export function isFunction<T>(value: T): value is T & ((...args: never[]) => voi
 }
 
 /** 是否为对象（非 null、非数组；收窄后保留调用方的具体类型） */
-export function isObject<T extends object>(
-  value: T | null | undefined,
-): value is T {
+export function isObject<T extends object>(value: T | null | undefined): value is T {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 

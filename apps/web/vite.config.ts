@@ -35,7 +35,8 @@ export default defineConfig(() => ({
     host: '0.0.0.0',
     proxy: {
       // Rust 伴生服务（对局控制面 / TTS 语音合成），前端同源走相对路径
-      '/api': 'http://127.0.0.1:17870',
+      // ws:true：录制推流用 WebSocket 升级请求（对象形式才支持，字符串简写不转发 ws）
+      '/api': { target: 'http://127.0.0.1:17870', ws: true },
     },
     watch: {
       // 包源码在 vite root（apps/web）之外，默认不监听；不追加的话改包源码

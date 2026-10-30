@@ -1,6 +1,6 @@
 import { Avatar, Card } from '@agent-packages/shared-ui';
 import { cn } from '@agent-packages/shared-ui';
-import type { Player } from './types';
+import type { Player } from '../types';
 
 export type SpeechPanelProps = {
   speaker: Player;

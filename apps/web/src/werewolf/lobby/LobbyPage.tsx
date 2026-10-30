@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Avatar, SegmentedControl, cn } from '@agent-packages/shared-ui';
-import { AGENT_POOL, BOARDS, ROLE_CN, type BoardDef } from './boards';
-import { fetchLeaderboard, fetchRooms, type LeaderboardRowDto, type RoomInfo } from './liveClient';
+import { useNavigate } from 'react-router';
+import { AGENT_POOL, BOARDS, ROLE_CN, type BoardDef } from '../boards';
+import { fetchLeaderboard, fetchRooms } from '../../apis/werewolf';
+import type { LeaderboardRowDto, RoomInfo } from '../../apis/types';
 
 function boardOf(id: string): BoardDef {
   return BOARDS.find((b) => b.id === id) ?? BOARDS[0];
@@ -33,21 +35,8 @@ const RANK_CLS: Record<number, string> = {
  * 狼人杀房间大厅：选择玩法 + 真实房间列表（SQLite）。
  * 房间只分两类：进行中（可观战）与历史（已结束）；等待只是建房→开局的毫秒级过渡，不展示。
  */
-export function LobbyPage({
-  onBack,
-  onEnter,
-  onSpectateRoom,
-  onSpectate,
-  onSettings,
-}: {
-  onBack: () => void;
-  /** 从向导创建并进入新房间 */
-  onEnter: (board: BoardDef) => void;
-  /** 观战/查看一个真实房间（直接进 live 对局页；已结束房间走降级结算） */
-  onSpectateRoom: (board: BoardDef, roomCode: string) => void;
-  onSpectate?: () => void;
-  onSettings?: () => void;
-}) {
+export function LobbyPage() {
+  const navigate = useNavigate();
   const [boardId, setBoardId] = useState('allstars12');
   /** 真实房间（SQLite）；server 不可达时置 null（隐藏列表区块） */
   const [rooms, setRooms] = useState<RoomInfo[] | null>(null);
@@ -92,40 +81,19 @@ export function LobbyPage({
     <div className="flex h-dvh flex-col overflow-hidden bg-arena bg-gradient-to-b from-arena-glow/50 via-arena to-arena">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full max-w-5xl flex-col gap-8 px-6 py-10">
-          <button
-            type="button"
-            onClick={onBack}
-            className={cn(
-              'w-fit rounded-full border border-arena-line px-3 py-1.5 text-xs text-arena-muted',
-              'transition-colors duration-200 hover:border-arena-line hover:text-arena-text active:scale-[0.98]',
-            )}
-          >
-            ‹ 返回游戏大厅
-          </button>
           <header className="text-center">
             <h1 className="text-4xl font-black tracking-widest text-arena-gold drop-shadow-lg">
               AI 狼人杀
             </h1>
             <p className="mt-2 flex items-center justify-center gap-3 text-sm text-arena-muted">
               对局大厅 · 选玩法，进房间，看 Agent 博弈
-              {onSettings && (
-                <button
-                  type="button"
-                  onClick={onSettings}
-                  className="rounded-full border border-arena-line px-2.5 py-0.5 text-xs text-arena-muted transition-colors hover:border-arena-line hover:text-arena-text"
-                >
-                  ⚙️ AI 设置
-                </button>
-              )}
-              {onSpectate && (
-                <button
-                  type="button"
-                  onClick={onSpectate}
-                  className="text-arena-gold/80 underline-offset-2 hover:text-arena-gold hover:underline"
-                >
-                  静态观战示例 →
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => void navigate('/werewolf/spectate')}
+                className="text-arena-gold/80 underline-offset-2 hover:text-arena-gold hover:underline"
+              >
+                静态观战示例 →
+              </button>
             </p>
           </header>
 
@@ -135,7 +103,9 @@ export function LobbyPage({
               <h2 className="text-sm font-bold tracking-wider text-arena-muted">选择玩法</h2>
               <button
                 type="button"
-                onClick={() => onEnter(board)}
+                onClick={() => {
+                  void navigate(`/werewolf/setup/${board.id}`);
+                }}
                 className="rounded-full bg-arena-gold/20 px-4 py-1.5 text-xs font-bold text-arena shadow-card transition-colors hover:bg-arena-gold"
               >
                 + 创建 {board.total} 人房
@@ -209,7 +179,11 @@ export function LobbyPage({
                     <span className="text-xs text-arena-muted">{room.created_at}</span>
                     <button
                       type="button"
-                      onClick={() => onSpectateRoom(boardFromServer(room.board_id), room.code)}
+                      onClick={() => {
+                    void navigate('/werewolf/play', {
+                      state: { boardId: boardFromServer(room.board_id).id, roomCode: room.code },
+                    });
+                  }}
                       className="ml-auto shrink-0 rounded-full bg-arena-gold/20 px-4 py-1.5 text-xs font-bold text-arena shadow-card transition-colors hover:bg-arena-gold"
                     >
                       观战
@@ -256,7 +230,11 @@ export function LobbyPage({
                       <span className="text-xs text-arena-muted">{room.created_at}</span>
                       <button
                         type="button"
-                        onClick={() => onSpectateRoom(boardFromServer(room.board_id), room.code)}
+                        onClick={() => {
+                    void navigate('/werewolf/play', {
+                      state: { boardId: boardFromServer(room.board_id).id, roomCode: room.code },
+                    });
+                  }}
                         className="ml-auto shrink-0 rounded-full border border-arena-line px-4 py-1.5 text-xs font-bold text-arena-muted transition-colors hover:border-arena-line hover:text-arena-text"
                       >
                         查看结果

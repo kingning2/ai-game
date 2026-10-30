@@ -7,21 +7,16 @@ import {
   type AgentSettingsValue,
 } from '@agent-packages/shared-ui';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { fetchAgentConfig, updateAgentConfig } from './agentConfig';
-
-export type SettingsPageProps = {
-  onBack: () => void;
-  /** 打开选手模型配置页（12 名参赛 AI 各自的 provider/模型/Key）；未传时不渲染入口 */
-  onOpenRoster?: () => void;
-  className?: string;
-};
 
 /**
  * AI 设置页（跨游戏全局）：模型供应商 / Base URL / 模型 / API Key / Max Tokens。
  * 配置存 server 端（PUT /api/agent/config），所有游戏的 Agent 决策共用；
  * Key 脱敏存储永不回显明文，留空保存 = 保留现有 Key。
  */
-export function SettingsPage({ onBack, onOpenRoster, className }: SettingsPageProps) {
+export function SettingsPage({ className }: { className?: string }) {
+  const navigate = useNavigate();
   const [value, setValue] = useState<AgentSettingsValue | null>(null);
   const [draft, setDraft] = useState<AgentSettingsDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,19 +75,15 @@ export function SettingsPage({ onBack, onOpenRoster, className }: SettingsPagePr
     <div className={`flex h-dvh flex-col overflow-hidden bg-grouped-background ${className ?? ''}`}>
       <NavBar
         leading={
-          <Button variant="plain" size="sm" onClick={onBack}>
+          <Button variant="plain" size="sm" onClick={() => void navigate('/')}>
             ‹ 返回大厅
           </Button>
         }
         title="AI 设置"
         trailing={
-          onOpenRoster ? (
-            <Button variant="plain" size="sm" onClick={onOpenRoster}>
-              选手模型
-            </Button>
-          ) : (
-            <span className="w-20" aria-hidden />
-          )
+          <Button variant="plain" size="sm" onClick={() => void navigate('/settings/roster')}>
+            选手模型
+          </Button>
         }
       />
       {/* 内容区：页面唯一滚动方（app frame 铁律，见 rules/web/app-design.md §3） */}

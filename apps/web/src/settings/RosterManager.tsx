@@ -10,13 +10,8 @@ import {
 } from '@agent-packages/shared-ui';
 import { useEffect, useState } from 'react';
 import { AGENT_POOL } from '../werewolf/boards';
-import {
-  deletePlayer,
-  fetchRoster,
-  putPlayerOverride,
-  type PlayerOverrideDto,
-  type RosterPlayer,
-} from './roster';
+import { deletePlayer, fetchRoster, putPlayerOverride } from '../apis/settings';
+import type { PlayerOverrideDto, RosterPlayer } from '../apis/types';
 
 /** 头像候选：/avatars/ 下的 AI 品牌 logo（换头像与新增选手共用） */
 const AVATAR_CHOICES = [
@@ -229,15 +224,14 @@ export function RosterManager() {
         </div>
       ) : (
         <>
-          {/* 选手流：流式 chip 铺满宽度，点选展开编辑 */}
-          <div className="flex w-full flex-wrap gap-2.5" role="list" aria-label="选手列表">
+          {/* 选手流：流式 chip 铺满宽度，点选展开编辑（button 自带语义，不另套 list role） */}
+          <div className="flex w-full flex-wrap gap-2.5" aria-label="选手列表">
             {players.map((player) => {
               const open = expanded === player.name;
               return (
                 <button
                   key={player.name}
                   type="button"
-                  role="listitem"
                   aria-expanded={open}
                   onClick={() => select(player)}
                   className={cn(

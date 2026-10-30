@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Avatar, Spinner, cn } from '@agent-packages/shared-ui';
-import { AGENT_POOL } from './boards';
-import type { MvpDto } from './liveClient';
+import { AGENT_POOL } from '../boards';
+import type { MvpDto } from '../../apis/types';
 
 /** 头像映射：选手池按名字取图，找不到回退默认（姓氏末字缩写） */
 function avatarOf(name: string): string | undefined {
@@ -64,7 +64,7 @@ export function MvpPanel({ mvp }: { mvp: MvpDto | null | undefined }) {
       <p className="text-xs font-bold tracking-widest text-arena-gold/80">本场 MVP</p>
       <div className="flex items-center gap-3">
         <Avatar
-          src={winner !== null ? avatarOf(winner) : undefined}
+          src={winner != null ? avatarOf(winner) : undefined}
           alt={winner ?? '?'}
           fallback="★"
           size="lg"

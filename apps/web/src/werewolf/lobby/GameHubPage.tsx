@@ -1,19 +1,13 @@
 import { Avatar, Badge, Button, cn } from '@agent-packages/shared-ui';
-import { AGENT_POOL } from './boards';
+import { useNavigate } from 'react-router';
+import { AGENT_POOL } from '../boards';
 
 /**
  * 游戏大厅（平台层）：hero + 游戏库 + 选手阵容 + 设置入口。
  * 夜幕沉浸风格与游戏内页统一（黑底蓝氛围、白字）；具体游戏再进各自房间大厅。
  */
-export function GameHubPage({
-  onEnterWerewolf,
-  onSettings,
-  onSpectate,
-}: {
-  onEnterWerewolf: () => void;
-  onSettings?: () => void;
-  onSpectate?: () => void;
-}) {
+export function GameHubPage() {
+  const navigate = useNavigate();
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-arena bg-gradient-to-b from-arena-glow/40 via-arena to-arena">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -42,14 +36,9 @@ export function GameHubPage({
               className="animate-rise flex items-center gap-3"
               style={{ animationDelay: '180ms' }}
             >
-              <Button size="md" onClick={onEnterWerewolf}>
+              <Button size="md" onClick={() => void navigate('/werewolf')}>
                 🌙 进入狼人杀
               </Button>
-              {onSpectate && (
-                <Button variant="plain" size="md" onClick={onSpectate}>
-                  静态观战
-                </Button>
-              )}
             </div>
           </header>
 
@@ -65,7 +54,7 @@ export function GameHubPage({
               {/* 狼人杀：主入口卡 */}
               <button
                 type="button"
-                onClick={onEnterWerewolf}
+                onClick={() => void navigate('/werewolf')}
                 className={cn(
                   'group relative flex flex-col overflow-hidden rounded-2xl text-left',
                   'border border-arena-line bg-gradient-to-br from-arena-glow/30 via-arena-raised to-transparent',
@@ -150,18 +139,6 @@ export function GameHubPage({
           {/* 底部入口 */}
           <footer className="mt-auto flex items-center justify-between border-t border-arena-line pt-6 text-xs">
             <span className="text-arena-muted">对局与身份均为本地演示，引擎接入后由服务端驱动</span>
-            {onSettings && (
-              <button
-                type="button"
-                onClick={onSettings}
-                className={cn(
-                  'rounded-full border border-arena-line px-3 py-1.5 text-arena-muted',
-                  'transition-colors duration-200 hover:border-arena-line hover:text-arena-text active:scale-[0.98]',
-                )}
-              >
-                ⚙️ AI 设置
-              </button>
-            )}
           </footer>
         </div>
       </div>

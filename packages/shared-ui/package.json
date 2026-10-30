@@ -36,12 +36,5 @@
     "react-dom": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:"
-  },
-  "dependencies": {
-    "@agent-packages/shared": "workspace:*",
-    "@tanstack/react-form": "^1.33.5",
-    "@tanstack/react-table": "^9.3.1",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
   }
 }

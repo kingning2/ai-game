@@ -1,5 +1,5 @@
 import { Avatar, cn } from '@agent-packages/shared-ui';
-import type { Host } from './types';
+import type { Host } from '../types';
 
 export type HostPanelProps = {
   host: Host;

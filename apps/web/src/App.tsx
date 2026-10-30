@@ -10,17 +10,15 @@ import {
 import type { BoardDef, DealtGame } from './werewolf/boards';
 import { BOARDS } from './werewolf/boards';
 import type { Player } from './werewolf/types';
-import { FlowDemo } from './werewolf/FlowDemo';
-import { LobbyPage } from './werewolf/LobbyPage';
-import { RoomSetup } from './werewolf/RoomSetup';
-import { WerewolfPage } from './werewolf/WerewolfPage';
-import { GameHubPage } from './werewolf/GameHubPage';
+import { AppLayout } from './layout/AppLayout';
+import { WarfieldPage } from './werewolf/arena/WarfieldPage';
+import { LobbyPage } from './werewolf/lobby/LobbyPage';
+import { RoomSetup } from './werewolf/lobby/RoomSetup';
+import { GameHubPage } from './werewolf/lobby/GameHubPage';
 import { RosterSettingsPage } from './settings/RosterSettingsPage';
 import { SettingsPage } from './settings/SettingsPage';
-import { SettingsModal } from './settings/SettingsModal';
-import { useState } from 'react';
 
-/** /werewolf/setup/:boardId — 创建向导（选人 → 规则 → 发牌） */
+/** /werewolf/setup/:boardId — 创建向导（选人 → 规则 → 发牌）；返回大厅由 AppLayout 壳提供 */
 function SetupRoute() {
   const { boardId } = useParams();
   const navigate = useNavigate();
@@ -31,9 +29,6 @@ function SetupRoute() {
   return (
     <RoomSetup
       board={board}
-      onBack={() => {
-        void navigate('/werewolf');
-      }}
       onComplete={(dealt: DealtGame) => {
         void navigate('/werewolf/play', {
           state: { boardId: board.id, roomCode: dealt.roomCode, players: dealt.players },
@@ -59,7 +54,7 @@ function PlayRoute() {
   const board: BoardDef =
     BOARDS.find((candidate) => candidate.id === state.boardId) ?? BOARDS[BOARDS.length - 1];
   return (
-    <FlowDemo
+    <WarfieldPage
       board={board}
       roomName={state.roomCode !== undefined ? `${board.name} · ${state.roomCode}` : board.name}
       players={state.players}
@@ -72,75 +67,24 @@ function PlayRoute() {
   );
 }
 
-/** 路由表：游戏页全屏沉浸；设置入口走弹层（SettingsModal），/settings 保留为独立深链页。 */
+/** 路由表：游戏域壳内共享 AppLayout（返回/⚙️/设置弹层）；设置域自含 NavBar；对局页全屏沉浸。 */
 function AppRoutes() {
-  const navigate = useNavigate();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
-    <>
-      <Routes>
-        <Route
-          index
-          element={
-            <GameHubPage
-              onEnterWerewolf={() => {
-                void navigate('/werewolf');
-              }}
-              onSettings={() => setSettingsOpen(true)}
-            />
-          }
-        />
-        <Route
-          path="werewolf"
-          element={
-            <LobbyPage
-              onBack={() => {
-                void navigate('/');
-              }}
-              onEnter={(board) => {
-                void navigate(`/werewolf/setup/${board.id}`);
-              }}
-              onSpectateRoom={(board, roomCode) => {
-                void navigate('/werewolf/play', { state: { boardId: board.id, roomCode } });
-              }}
-              onSpectate={() => {
-                void navigate('/werewolf/spectate');
-              }}
-              onSettings={() => setSettingsOpen(true)}
-            />
-          }
-        />
-        <Route
-          path="settings"
-          element={
-            <SettingsPage
-              onBack={() => {
-                void navigate('/');
-              }}
-              onOpenRoster={() => {
-                void navigate('/settings/roster');
-              }}
-            />
-          }
-        />
-        <Route path="settings/roster" element={<RosterSettingsPage />} />
+    <Routes>
+      {/* 壳路由：游戏域三页共享 chrome，页面只留特有动作 */}
+      <Route element={<AppLayout />}>
+        <Route index element={<GameHubPage />} />
+        <Route path="werewolf" element={<LobbyPage />} />
         <Route path="werewolf/setup/:boardId" element={<SetupRoute />} />
-        <Route path="werewolf/play" element={<PlayRoute />} />
-        <Route
-          path="werewolf/spectate"
-          element={
-            <WerewolfPage
-              onBack={() => {
-                void navigate('/werewolf');
-              }}
-            />
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      {/* 设置弹层：主页/大厅 ⚙️ 触发，全局单例 */}
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-    </>
+      </Route>
+      {/* 设置域：标准 App 工具条页，自含导航（URL 直达深链） */}
+      <Route path="settings" element={<SettingsPage />} />
+      <Route path="settings/roster" element={<RosterSettingsPage />} />
+      {/* 对局页：全屏沉浸，不包壳；观战 = 无发牌状态进 PlayRoute（SSE 追平直播） */}
+      <Route path="werewolf/play" element={<PlayRoute />} />
+      <Route path="werewolf/spectate" element={<Navigate to="/werewolf/play" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 

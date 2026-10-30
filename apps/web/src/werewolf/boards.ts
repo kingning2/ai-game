@@ -1,4 +1,5 @@
 import type { Player, Role } from './types';
+import type { ScriptDto } from '../apis/types';
 
 /** 角色中文名（大厅角色 chips 共用） */
 export const ROLE_CN: Record<Role, string> = {
@@ -10,7 +11,11 @@ export const ROLE_CN: Record<Role, string> = {
   villager: '平民',
 };
 
-/** 玩法板子：角色序列按座位 1..N 发放，夜间流程参数供剧本生成 */
+/**
+ * 玩法板子：角色序列按座位 1..N 发放，夜间流程参数供剧本生成。
+ * id = server 剧本 id = 引擎板子预设名（两端同名，消灭映射层）。
+ * rules/intro 来自 /api/scripts（server 剧本为事实源）；离线回退（BOARDS 静态）时可缺省。
+ */
 export type BoardDef = {
   id: string;
   name: string;
@@ -25,11 +30,15 @@ export type BoardDef = {
   witchSaves: boolean;
   killTarget: number;
   checkTarget: number;
+  /** 规则列表（介绍页逐条展示；来自 /api/scripts） */
+  rules?: string[];
+  /** 主持开场词（介绍页逐段播报；来自 /api/scripts） */
+  intro?: string[];
 };
 
 export const BOARDS: BoardDef[] = [
   {
-    id: 'rookie6',
+    id: 'newbie_six',
     name: '新手 6 人局',
     total: 6,
     desc: '2 狼 · 预言家 · 女巫 · 2 平民',
@@ -42,7 +51,7 @@ export const BOARDS: BoardDef[] = [
     checkTarget: 5,
   },
   {
-    id: 'standard9',
+    id: 'nine_standard',
     name: '标准 9 人局',
     total: 9,
     desc: '3 狼 · 预言家 · 女巫 · 猎人 · 3 平民',
@@ -65,7 +74,7 @@ export const BOARDS: BoardDef[] = [
     checkTarget: 9,
   },
   {
-    id: 'allstars12',
+    id: 'all_stars',
     name: '全明星 12 人局',
     total: 12,
     desc: '4 狼 · 预言家 · 女巫 · 守卫 · 猎人 · 4 平民',
@@ -118,6 +127,39 @@ export function buildPlayers(board: BoardDef): Player[] {
     role: board.roles[i],
     status: 'alive' as const,
   }));
+}
+
+/**
+ * server 剧本（/api/scripts）→ 前端板子：per-seat 角色序列由配比展开（乱序占位即可——
+ * live 身份牌以 server 真实发牌 seat_roles 为准；离线回退走 dealGame 重洗），
+ * 规则/开场词直接透传（介绍页素材）。
+ */
+export function toBoard(script: ScriptDto): BoardDef {
+  const roles: Role[] = script.roles.flatMap((entry) =>
+    Array.from({ length: entry.count }, () => entry.role),
+  );
+  const seatOf = (role: Role): number[] =>
+    roles.reduce<number[]>((acc, r, i) => (r === role ? [...acc, i + 1] : acc), []);
+  const goodSeats = roles.reduce<number[]>(
+    (acc, r, i) => (r !== 'werewolf' ? [...acc, i + 1] : acc),
+    [],
+  );
+  return {
+    id: script.id,
+    name: script.name,
+    total: script.total,
+    desc: script.desc,
+    roles,
+    wolfSeats: seatOf('werewolf'),
+    seerSeat: seatOf('seer')[0] ?? 1,
+    witchSeat: seatOf('witch')[0],
+    guardSeat: seatOf('guard')[0],
+    witchSaves: script.roles.some((entry) => entry.role === 'witch'),
+    killTarget: goodSeats[0] ?? 1,
+    checkTarget: goodSeats[1] ?? goodSeats[0] ?? 1,
+    rules: script.rules,
+    intro: script.intro,
+  };
 }
 
 /** 发牌结果：洗牌后的板子（座位参数同步重派生）+ 入座玩家 */

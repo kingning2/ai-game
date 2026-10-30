@@ -18,12 +18,6 @@ import type { GameEventDto, GameFeed } from './types';
 /** 开局倒计时秒数：事件就绪后先倒数再开演，让主持仪式感先入戏 */
 export const COUNTDOWN_FROM_SECONDS = 5;
 
-/** 开演前希望数据源缓好的事件数：不够则“开始”停留等待，避免一开演就追直播 */
-export const MIN_START_BUFFER_EVENTS = 6;
-
-/** 开演前等缓冲的上限（ms）：超时无论多少事件都照常开演（对局未开起来时不无限卡住） */
-export const BUFFER_WAIT_MAX_MS = 8000;
-
 /** 状态轮询间隔（ms）——调用方若用轮询拉数据，建议用这个节奏 */
 export const POLL_INTERVAL_MS = 1500;
 
@@ -59,18 +53,22 @@ export class WerewolfGame<TStatus = JsonValue> {
   private begun = false;
   /** 倒计时只起一次（防重入） */
   private countdownStarted = false;
-  private countdownStartedAt = 0;
   /** 演出进行中（倒计时结束 / startReplay / skipToLive 置位） */
   private playing = false;
   /** destroy() 后丢弃后续 ingest 的节拍排程（在途轮询回调仍可能调进来） */
   private destroyed = false;
+  /** 实例是否已销毁（渲染层 StrictMode 重挂时据此换新实例） */
+  get isDestroyed(): boolean {
+    return this.destroyed;
+  }
   private beatTimer: ReturnType<typeof setTimeout> | undefined;
   private countdownTimer: ReturnType<typeof setTimeout> | undefined;
-  private bufferTimer: ReturnType<typeof setInterval> | undefined;
 
   // —— 订阅（箭头属性：实例级稳定引用，适配 useSyncExternalStore） ——
 
-  readonly subscribe = (listener: (snapshot: WerewolfGameSnapshot<TStatus>) => void): (() => void) => {
+  readonly subscribe = (
+    listener: (snapshot: WerewolfGameSnapshot<TStatus>) => void,
+  ): (() => void) => {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -147,12 +145,12 @@ export class WerewolfGame<TStatus = JsonValue> {
     if (!this.begun || this.countdownStarted || replayStarted) return;
     if (events.length === 0 || playhead >= 0 || countdown !== null) return;
     this.countdownStarted = true;
-    this.countdownStartedAt = Date.now();
     this.#patch({ countdown: COUNTDOWN_FROM_SECONDS });
     this.#tickCountdown();
   }
 
-  /** 倒计时节奏：5→1 每秒减一；“开始”停留时等数据源缓冲攒够，超时则照常开演 */
+  /** 倒计时节奏：5→1 每秒减一；归零即开演——已有事件立刻按序播出，
+   *  尚无事件则等首批 ingest 到达再起节拍（ingest 每次都会重排 #scheduleBeat） */
   #tickCountdown(): void {
     const current = this.snapshot.countdown;
     if (current === null) return;
@@ -165,21 +163,13 @@ export class WerewolfGame<TStatus = JsonValue> {
       }, 1000);
       return;
     }
-    this.bufferTimer = setInterval(() => {
-      const buffered = this.snapshot.events.length >= MIN_START_BUFFER_EVENTS;
-      const waitedEnough = Date.now() - this.countdownStartedAt >= BUFFER_WAIT_MAX_MS;
-      if (buffered || waitedEnough) {
-        this.#teardownCountdown();
-        this.#startPerformance();
-      }
-    }, 500);
+    this.#teardownCountdown();
+    this.#startPerformance();
   }
 
   #teardownCountdown(): void {
     if (this.countdownTimer !== undefined) clearTimeout(this.countdownTimer);
     this.countdownTimer = undefined;
-    if (this.bufferTimer !== undefined) clearInterval(this.bufferTimer);
-    this.bufferTimer = undefined;
   }
 
   // —— 内部：回放节拍 ——
@@ -205,6 +195,18 @@ export class WerewolfGame<TStatus = JsonValue> {
       this.#patch({ playhead: this.snapshot.playhead + 1 });
       this.#scheduleBeat();
     }, playbackMs(next));
+  }
+
+  /**
+   * 当前事件的播报已完成（CaptionBar onAllSpoken 回调）：立即推进下一条。
+   * 主路径——「说完才到下一个说」；playbackMs 定时器只是 TTS 失败的兑底。
+   */
+  speechDone(): void {
+    if (this.destroyed || this.beatTimer === undefined) return;
+    if (this.snapshot.countdown !== null || !this.playing) return;
+    this.#teardownBeat();
+    this.#patch({ playhead: this.snapshot.playhead + 1 });
+    this.#scheduleBeat();
   }
 
   #teardownBeat(): void {

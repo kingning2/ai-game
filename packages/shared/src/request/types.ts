@@ -12,7 +12,13 @@ export const SUCCESS_CODE = 0;
  * 递归 JSON 值：替代 any 的「未知数据」表示（项目规范：禁 unknown，未知结构用具体类型或泛型）。
  * 仅作泛型默认值用——调用方永远应显式声明业务类型。
  */
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 /** 后端统一响应包裹（data 允许为任意业务数据，由调用方泛型声明） */
 export interface ApiResponse<T = JsonValue> {

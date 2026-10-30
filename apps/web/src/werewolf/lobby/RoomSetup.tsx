@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@agent-packages/shared-ui';
-import { AGENT_POOL, dealtFromServer, dealGame, type BoardDef, type DealtGame } from './boards';
-import { CaptionBar } from './CaptionBar';
-import { createRoom, fetchGameStatus, startGame, toServerBoard } from './liveClient';
+import { AGENT_POOL, dealtFromServer, dealGame, type BoardDef, type DealtGame } from '../boards';
+import { CaptionBar } from '../CaptionBar';
+import { createRoom, fetchGameStatus, startGame } from '../../apis/werewolf';
+import { useRecorder } from '../arena/useRecorder';
 
 /** 角色阵营 → 展示色（狼红 / 神蓝 / 民灰），与舞台 roleTone 语义一致 */
 const ROLE_CHIP: Record<string, string> = {
@@ -59,7 +60,7 @@ export type RoomSetupProps = {
   board: BoardDef;
   /** 发牌完成、玩家确认后进入对局 */
   onComplete: (dealt: DealtGame) => void;
-  onBack?: () => void;
+  /** 完成发牌：带着开局结果进对局页（后端已预热推理） */
 };
 
 /**
@@ -68,7 +69,7 @@ export type RoomSetupProps = {
  * → ③ 洗牌 + 随机发身份（逐座翻牌动画）→ 进入对局。
  * 与大厅同视觉语言：夜幕黑底 + 蓝渐变 + 白字。
  */
-export function RoomSetup({ board, onComplete, onBack }: RoomSetupProps) {
+export function RoomSetup({ board, onComplete }: RoomSetupProps) {
   const [step, setStep] = useState<'picking' | 'rules' | 'dealing'>('picking');
   const [picked, setPicked] = useState<number[]>([]);
   const [dealt, setDealt] = useState<DealtGame | null>(null);
@@ -115,12 +116,20 @@ export function RoomSetup({ board, onComplete, onBack }: RoomSetupProps) {
   // 规则页时间轴推进：钩子→卡轮播→快闪→CTA；同时真实创建房间（SQLite 落库）
   // + 预热开局（幂等）：讲规则的同时 server 已在夜里推进，规则讲完牌局已在 buffer。
   // 房间创建失败不阻断对局（仅无落库）。
+  // 录制同步启动：介绍页开场即录，跳对局页后推流会话跨页面接管不中断（模块级单例）。
+  const recorder = useRecorder();
+  const { state: recState, recording: recBusy, start: recStart } = recorder;
+  useEffect(() => {
+    if (step === 'rules' && recState === 'idle' && !recBusy) {
+      void recStart(`${board.name}-${Date.now()}`);
+    }
+  }, [step, board.name, recState, recBusy, recStart]);
   useEffect(() => {
     if (step !== 'rules') return undefined;
-    const boardId = toServerBoard(board.id);
-    // StrictMode 双执行守卫：创建房间 + 开局只发一次
-    if (boardId && !launchRef.current) {
+    // StrictMode 双执行守卫：创建房间 + 开局只发一次（board.id 即 server 剧本名，同名直用）
+    if (!launchRef.current) {
       launchRef.current = true;
+      const boardId = board.id;
       const names = picked.map((i) => AGENT_POOL[i].name);
       const launch = async (): Promise<void> => {
         try {
@@ -224,19 +233,9 @@ export function RoomSetup({ board, onComplete, onBack }: RoomSetupProps) {
     <div className="flex h-dvh flex-col overflow-hidden bg-arena bg-gradient-to-b from-arena-glow/50 via-arena to-arena">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-6 px-6 py-8">
-          {/* 顶栏：返回 + 步骤指示 */}
+          {/* 顶栏：步骤指示（返回导航由 AppLayout 壳提供） */}
           <div className="flex items-center justify-between">
-            {onBack ? (
-              <button
-                type="button"
-                onClick={onBack}
-                className="rounded-full bg-arena/50 px-3 py-1.5 text-xs font-medium text-arena-muted backdrop-blur-sm hover:bg-arena/70"
-              >
-                ← 返回大厅
-              </button>
-            ) : (
-              <span />
-            )}
+            <span />
             <div className="flex items-center gap-2 text-xs">
               {(['picking', 'rules', 'dealing'] as const).map((s, i) => (
                 <span
@@ -435,6 +434,8 @@ export function RoomSetup({ board, onComplete, onBack }: RoomSetupProps) {
 
               <CaptionBar
                 voice="主持人"
+                // 介绍页主持人走 Edge 免费接口（女声），无需本地模型
+                voices={{ 主持人: 'zh-CN-XiaoxiaoNeural' }}
                 text={
                   rulePhase === 'hook'
                     ? '各位 Agent，我是本场主持人。天黑请闭眼——先看看你会拿到什么牌。'

@@ -1,7 +1,7 @@
 /** 狼人杀观战页 —— 本地语音合成客户端（对接 Rust 伴生服务 /api/tts） */
 
-/** 语音引擎：本地 kokoro（离线，WAV）/ 豆包官方音色（云端，需服务端配 Cookie） */
-export type TtsEngine = 'local' | 'doubao';
+/** 语音引擎：本地 kokoro（离线，WAV）/ 豆包官方音色（云端，需服务端配 Cookie）/ Edge 免费接口（云端，MP3，无需 Key） */
+export type TtsEngine = 'local' | 'doubao' | 'edge';
 
 /** 服务端 TTS 装配状态（GET /api/tts/status） */
 export type TtsStatus = {

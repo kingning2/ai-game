@@ -52,6 +52,8 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       role="radiogroup"
+      // 焦点交给内部 roving 的 radio 按钮（optionRefs），容器本身不进 Tab 序
+      tabIndex={-1}
       onKeyDown={onGroupKeyDown}
       className={cn('relative inline-flex rounded-lg bg-fill p-0.5', className)}
       {...rest}

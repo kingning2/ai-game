@@ -1,4 +1,4 @@
-import type { GameSnapshot, Host, Player } from './types';
+import type { GameSnapshot, Host, Player } from '../types';
 
 /** 主持人（法官）：只主持流程，不下场博弈 */
 export const MOCK_HOST: Host = {

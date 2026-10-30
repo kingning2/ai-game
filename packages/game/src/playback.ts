@@ -16,7 +16,9 @@ export function playbackMs(event: GameEventDto): number {
       return 3400; // 天亮请睁眼 + 死讯揭晓前奏
     case GameEventKind.WolfChat:
     case GameEventKind.Speech:
-      return Math.min(2600 + event.text.length * 90, 8000);
+      // 兑底估算（约 7.7 字/秒）：正常路径 CaptionBar 播完即提前推进（speechDone），
+      // 只有 TTS 失败降级定时器时才会等到这里，所以放宽余量避免截断语音
+      return Math.min(2600 + event.text.length * 130, 12000);
     case GameEventKind.Died:
       return 3800; // 死讯要停留够久，让座位打叉动画与默哀播完
     case GameEventKind.NightAction:
@@ -53,6 +55,8 @@ export function projectStage<TPlayer extends GamePlayer>(
   events: GameEventDto[],
   players: TPlayer[],
   roomName: string,
+  /** 未播的下一条事件（调用方从全量流取）：用于主持词衔接（如狼刀后接「狼人请闭眼」） */
+  next?: GameEventDto,
 ): ProjectedStage<TPlayer> {
   const last = events.at(-1);
   const dead = new Set(
@@ -68,17 +72,26 @@ export function projectStage<TPlayer extends GamePlayer>(
       (last.kind === GameEventKind.Died &&
         !events.some((e) => e.kind === GameEventKind.Dawn && e.day === last.day))
     : true;
-  // 发言/狼聊：前缀里最近一条带文本的事件（含说话座位）。
-  // 夜晚只在“最后一条事件就是这条发言”时展示：狼聊之后还有狼刀/女巫/预言家等夜行窗口，
-  // 聚光灯已亮在行动者身上，发言栏再残留狼的耳语会像串场；白天发言按设计演完仍停留
+  // 发言：前缀里最近一条带文本的事件（含说话座位）。夜晚只在“最后一条事件就是
+  // 这条发言”时展示；狼聊不在这里——它是狼人内部交流，走 wolfChat 段并排展示，不进主发言栏
   const talk = events
     .toReversed()
     .find(
       (e) =>
-        (e.kind === GameEventKind.Speech || e.kind === GameEventKind.WolfChat) &&
+        e.kind === GameEventKind.Speech &&
         e.seat !== null &&
         !(night && e !== last),
     );
+  // 狼人内部交流段：前缀末尾最近一段连续 WolfChat（中间被夜行动/狼沉默打断则截断）。
+  // 全段同时展示——现实中是两狼同时商议，不是逐个演讲；播放层不播这段的语音
+  const wolfChat: { player: TPlayer; text: string }[] = [];
+  if (night) {
+    for (const e of events.toReversed()) {
+      if (e.kind !== GameEventKind.WolfChat || e.seat === null) break;
+      const player = players.find((p) => p.id === e.seat);
+      if (player) wolfChat.unshift({ player, text: e.text });
+    }
+  }
   // 夜晚聚光：前缀里最近一条夜行动/狼聊/狼沉默的主角
   const spotlightSeat =
     events
@@ -90,6 +103,11 @@ export function projectStage<TPlayer extends GamePlayer>(
             e.kind === GameEventKind.WolfChat ||
             e.kind === GameEventKind.WolfPass),
       )?.seat ?? null;
+  // 刀口：前缀里最近一条狼刀夜行动的 target（女巫环节报死讯用；空刀/未找到为 undefined）
+  const wolfTarget = events
+    .toReversed()
+    .map((e) => (e.kind === GameEventKind.NightAction ? /狼刀(\d+)号/.exec(e.text)?.[1] : undefined))
+    .find((t) => t !== undefined);
   const day = last?.day ?? 1;
   // 分母用板上座位数而非 status.total：后者来自服务端最新对局，可能与当前房间板子不一致
   const alive = players.length - dead.size;
@@ -102,71 +120,83 @@ export function projectStage<TPlayer extends GamePlayer>(
       ? players.find((p) => p.id === talk.seat)
       : undefined;
   return {
-    phase: (night ? 'night' : 'day') as 'night' | 'day',
+    phase: night ? ('night' as const) : ('day' as const),
     phaseLabel:
-      last?.kind === GameEventKind.Over ? '🏁 对局结束' : night ? `🌙 第 ${day} 夜` : `☀️ 第 ${day} 天`,
+      last?.kind === GameEventKind.Over
+        ? '🏁 对局结束'
+        : night
+          ? `🌙 第 ${day} 夜`
+          : `☀️ 第 ${day} 天`,
     caption: `${roomName} · 第 ${day} ${night ? '夜' : '天'} · 存活 ${alive}/${players.length}`,
     stagePlayers,
     speaker,
+    wolfChat,
     speechText: talk?.text,
     spotlightSeats: spotlightSeat !== null ? [spotlightSeat] : [],
-    hostMessage: hostSay(last, speaker?.name, night),
+    hostMessage: hostSay(last, night, { next, wolfTarget }),
   };
 }
 
-/** 主持人口播：按事件类型给台词（seatName 需要 in-game 名字时由 name 参数补齐） */
-export function hostSay(event: GameEventDto | undefined, name?: string, isNight = false): string {
-  if (!event) return '各位稍作等待，主持人正在整理场上的局势……';
-  const seatName = (n: number): string => `${n} 号玩家${name ? `（${name}）` : ''}`;
+/**
+ * 主持人口播：指令式标准主持词，无修饰。
+ * seatName 需要 in-game 名字时由 name 参数补齐。
+ */
+export function hostSay(
+  event: GameEventDto | undefined,
+  isNight = false,
+  /** 预读信息：next=未播的下一条（夜行动作间衔接「X 请闭眼」）；wolfTarget=刀口（女巫报死讯） */
+  peek?: { next?: GameEventDto; wolfTarget?: string },
+): string {
+  if (!event) return '各位稍作等待，对局马上开始。';
   switch (event.kind) {
     case GameEventKind.Started:
-      return '各位选手，请入座。身份牌已经握在每个人的手心里——是深藏不露，还是主动搅局？故事，从今夜开始。';
+      return '各位选手请入座。';
     case GameEventKind.Night:
-      return `天黑请闭眼——第 ${event.day} 夜拉开帷幕。夜色漫过村庄，所有人都沉沉睡去。好梦，还是噩梦，天亮才知道。`;
-    case GameEventKind.NightAction:
-      return '夜深了，有人悄悄睁开了眼睛，在黑暗中默默做出自己的选择……';
+      return '天黑请闭眼。';
     case GameEventKind.WolfChat:
-      return '狼人请睁眼——狼友们，压低声音商量一下：今晚，把谁送走？';
+      return '狼人请睁眼。请商量今晚袭击的玩家。';
     case GameEventKind.WolfPass:
-      return '狼人们已经心意已决。獠牙收起，静待黎明。';
+      // 狼聊结束标志；「狼人请闭眼」由紧随的狼刀夜行动作播，这里不重复
+      return '';
+    case GameEventKind.NightAction: {
+      // 服务端 text 自带角色名（如「4号（狼）：狼刀7号」）→ 按角色取完整主持词。
+      // 狼的「请睁眼」已由狼聊事件播过，这里只负责「狼人请闭眼」收尾；
+      // 其余角色整句含睁眼+闭眼，与相邻动作串成标准主持流。
+      const role = /（(.+?)）/.exec(event.text)?.[1] ?? '';
+      const lines: Record<string, string> = {
+        狼: '狼人请闭眼。',
+        预言家: '预言家请睁眼。请查验一名玩家的身份。预言家请闭眼。',
+        守卫: '守卫请睁眼。请选择今晚守护的玩家。守卫请闭眼。',
+        女巫:
+          peek?.wolfTarget !== undefined
+            ? `女巫请睁眼。昨晚 ${peek.wolfTarget} 号玩家出局，是否使用解药？是否使用毒药？女巫请闭眼。`
+            : '女巫请睁眼。昨晚是平安夜。是否使用毒药？女巫请闭眼。',
+      };
+      return lines[role] ?? event.text; // 未知角色：原文兜底
+    }
     case GameEventKind.Dawn:
       return event.deaths && event.deaths.length > 0
-        ? `天亮请睁眼——昨夜不是平安夜。${event.deaths.map((n) => seatName(n)).join('、')}，永远地留在了黑暗里。请默哀——然后擦亮眼睛，狼，就藏在你们中间。`
-        : '天亮请睁眼——昨天是平安夜！昨夜无人出局。但别高兴得太早，狼的獠牙，今晚还会再来。';
+        ? `天亮请睁眼。昨夜 ${event.deaths.join('、')} 号玩家出局。`
+        : '天亮请睁眼。昨夜是平安夜。';
     case GameEventKind.Speech:
-      return event.seat !== null
-        ? `有请 ${event.seat} 号玩家${name ? `，${name}` : ''}，请开始你的发言。`
-        : '好，下面进入发言环节——请各位依次开始你的表演。';
+      return event.seat !== null ? `${event.seat}号玩家请发言` : '请各位依次发言。';
     case GameEventKind.Vote:
       return event.tie
-        ? '投票结果出炉——平票！今天无人被放逐，但怀疑的种子已经种下。'
-        : event.target !== undefined
-          ? `投票结果出炉——${event.target} 号玩家，被放逐出局。请留下你的遗言。`
-          : '发言到此为止。现在，请把你手中的一票，投给你心中的狼人。';
+        ? '发言到此为止，请全体投票。平票，无人出局。'
+        : `发言到此为止，请全体投票。投票结果：${event.target ?? ''}号玩家出局，请留遗言。`;
     case GameEventKind.Duel:
-      return event.target !== undefined
-        ? `决斗见分晓——${event.target} 号玩家倒下了！生死，就在一念之间。`
-        : '平票了！按照规则，进入决斗环节——生死，就在一念之间。';
+      return `平票，进入决斗环节。决斗结果：${event.target ?? ''}号玩家出局。`;
     case GameEventKind.Idiot:
-      return event.seat !== null
-        ? `翻牌！${event.seat} 号竟然是白痴——他可以留在场上，但从今天起失去投票权。`
-        : '翻牌！竟然是白痴——他可以留在场上，但从今天起失去投票权。';
+      return `${event.seat ?? ''}号玩家是白痴，翻牌免死，失去投票权。`;
     case GameEventKind.Hunter:
       return event.target !== undefined
-        ? `猎人亮出了身份——枪响！${event.target} 号应声倒地。`
-        : '猎人收起了枪——把子弹带进了坟墓，放弃开枪。';
+        ? `${event.seat ?? ''}号玩家的身份是猎人。枪响，带走 ${event.target} 号玩家。`
+        : `${event.seat ?? ''}号玩家的身份是猎人。他选择放弃开枪。`;
     case GameEventKind.Died:
-      // 夜晚遇害（天亮前的揭晓仪式）与白天出局（放逐/枪杀/决斗）口播不同
-      if (isNight) {
-        return event.seat !== null
-          ? `夜色中传来噩耗——${event.seat} 号玩家出局了。请全体默哀，然后擦亮眼睛：狼，就藏在你们中间。`
-          : '夜色中传来噩耗，有位选手永远地留在了黑暗里。请默哀——然后擦亮眼睛，狼，就藏在你们中间。';
-      }
-      return event.seat !== null
-        ? `${event.seat} 号玩家出局。场上少了一个身影，真相却更近了一步。`
-        : '有位选手永远地留在了黑暗里。请默哀——然后擦亮眼睛，狼，就藏在你们中间。';
+      // 夜晚死讯由 dawn 统一揭晓；白天出局（枪杀/决斗）由对应事件词承担，这里兜底简报
+      return isNight ? '' : `${event.seat ?? ''}号玩家出局。`;
     case GameEventKind.Over:
-      return `本局结束！${event.text}。无论胜败，掌声送给每一位选手——夜幕终会再来，我们下次再会。`;
+      return `对局结束，${event.text}！`;
     default:
       return event.text;
   }

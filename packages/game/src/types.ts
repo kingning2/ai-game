@@ -48,6 +48,8 @@ export type ProjectedStage<TPlayer extends GamePlayer = GamePlayer> = {
   caption: string;
   stagePlayers: TPlayer[];
   speaker: TPlayer | undefined;
+  /** 夜晚狼人内部交流：同晚商议段的所有狼人发言（并排同屏展示，不播语音） */
+  wolfChat: { player: TPlayer; text: string }[];
   speechText: string | undefined;
   spotlightSeats: number[];
   hostMessage: string;

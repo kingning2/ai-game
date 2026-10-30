@@ -1,0 +1,2509 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "agent-packages server",
+    "description": "agent-packages 桌面端伴生服务：agent 配置（前端设置页读写）、狼人杀对局控制面（开始/暂停/继续/结束/状态）与服务元信息，及本地语音合成（TTS）。统一响应包裹 ApiResponse<T>：code === 0 表示成功。",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/agent/config": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "GET /api/agent/config",
+        "operationId": "get_agent_config",
+        "responses": {
+          "200": {
+            "description": "当前配置（Key 已脱敏）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_AgentConfigDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "PUT /api/agent/config",
+        "operationId": "update_agent_config",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentConfigUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功，返回脱敏后的新配置（已落盘并热生效）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_AgentConfigDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "字段非法（provider 未知名 / base_url 协议头缺失 / max_tokens 超界等）"
+          },
+          "500": {
+            "description": "provider 构建或配置文件落盘失败"
+          }
+        }
+      }
+    },
+    "/api/game/end": {
+      "post": {
+        "tags": [
+          "game"
+        ],
+        "summary": "POST /api/game/end",
+        "operationId": "end_game",
+        "responses": {
+          "200": {
+            "description": "已结束（ended_reason=manual 表示未自然结算的强制终局）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_GameStatusDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "没有可结束的对局",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/game/memory": {
+      "get": {
+        "tags": [
+          "game"
+        ],
+        "summary": "GET /api/game/memory：编排层从引擎事件流抽取玩家视角记忆。\n若该座位已做过 LLM 压缩，优先返回压缩后的记忆（含摘要行）。",
+        "operationId": "get_game_memory",
+        "parameters": [
+          {
+            "name": "player",
+            "in": "path",
+            "description": "玩家座位号（0 起）",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "locate",
+            "in": "path",
+            "description": "对局定位参数（room / game，同 [`GameQuery`]）",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/GameQuery"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "玩家视角的对局记忆",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_GameMemoryDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "座位号越界",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前没有进行中的对局",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/game/memory/compact": {
+      "post": {
+        "tags": [
+          "game"
+        ],
+        "summary": "AgentError 的映射统一走 `From<AgentError> for AppError`\n（error/app_error.rs：客户端输入 400，上游/链路 503，其余 500）\nPOST /api/game/memory/compact：记忆过长时调 LLM 压缩老段为摘要。",
+        "description": "编排链：引擎重算记忆 → [`memory::AgentMemory::compaction_plan`] 划分\n→ LLM 生成摘要 → [`memory::AgentMemory::apply_compaction`] 落回 →\n结果在 [`GameState`] 跨请求存活（`GET /api/game/memory` 优先返回）。\n未超窗时直接返回 `compacted = false`，不调模型。",
+        "operationId": "compact_game_memory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryCompactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "压缩完成（或无需压缩）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MemoryCompactDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "座位号越界",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前没有进行中的对局",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "agent 配置缺失 / 模型返回空摘要 / 压缩应用失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "上游模型不可用（网络 / 非 adhere 2xx / 流中断）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/game/pause": {
+      "post": {
+        "tags": [
+          "game"
+        ],
+        "summary": "POST /api/game/pause",
+        "operationId": "pause_game",
+        "responses": {
+          "200": {
+            "description": "已暂停",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_GameStatusDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "对局不在进行中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/game/resume": {
+      "post": {
+        "tags": [
+          "game"
+        ],
+        "summary": "POST /api/game/resume",
+        "operationId": "resume_game",
+        "responses": {
+          "200": {
+            "description": "已继续",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_GameStatusDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "对局不在暂停中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/game/start": {
+      "post": {
+        "tags": [
+          "game"
+        ],
+        "summary": "POST /api/game/start",
+        "operationId": "start_game",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GameStartRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "开局成功，返回开局后状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_GameStatusDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "未知板子预设",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "已有对局进行中 / 暂停中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/game/status": {
+      "get": {
+        "tags": [
+          "game"
+        ],
+        "summary": "GET /api/game/status",
+        "operationId": "get_game_status",
+        "responses": {
+          "200": {
+            "description": "当前对局状态与局面总览",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_GameStatusDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "基础设施探活端点，保持裸响应（不套 ApiResponse）",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "探活成功，固定返回 ok",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/info": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "State 注入示范：`State(state): State<AppState>` 从共享状态取配置与启动时刻",
+        "operationId": "get_server_info",
+        "responses": {
+          "200": {
+            "description": "服务元信息与实时请求统计",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ServerInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/leaderboard": {
+      "get": {
+        "tags": [
+          "werewolf"
+        ],
+        "summary": "GET /api/leaderboard",
+        "operationId": "get_leaderboard",
+        "responses": {
+          "200": {
+            "description": "胜利排行榜（按胜场/胜率/参局数降序）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Vec_LeaderboardEntryDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "GET /api/rooms",
+        "operationId": "list_rooms",
+        "responses": {
+          "200": {
+            "description": "房间列表（新→旧）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Vec_RoomDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "数据库不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "operationId": "create_room",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功（房间号唯一）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_RoomDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "未知板子 / 名单长度不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "数据库不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{code}": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "GET /api/rooms/{code}",
+        "operationId": "get_room",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "房间号",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "房间详情（含真实身份）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_RoomDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "房间不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "数据库不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/roster": {
+      "get": {
+        "tags": [
+          "roster"
+        ],
+        "summary": "GET /api/roster",
+        "operationId": "get_roster",
+        "responses": {
+          "200": {
+            "description": "全员选手配置（Key 已脱敏）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Vec_RosterPlayerDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/roster/{name}": {
+      "put": {
+        "tags": [
+          "roster"
+        ],
+        "summary": "PUT /api/roster/{name}",
+        "operationId": "put_roster_player",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "选手名",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerOverrideDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "覆盖已落盘，返回该选手最新配置（全字段缺省 = 清除覆盖）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_RosterPlayerDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "字段非法（provider 未知名 / base_url 协议头缺失 / max_tokens 超界等）"
+          },
+          "500": {
+            "description": "配置文件落盘失败"
+          }
+        }
+      }
+    },
+    "/api/tts/setup": {
+      "post": {
+        "tags": [
+          "tts"
+        ],
+        "summary": "POST /api/tts/setup",
+        "operationId": "setup_tts",
+        "responses": {
+          "200": {
+            "description": "已触发后台安装（返回触发时状态；用 status 轮询 phase 直到 ready/failed）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TtsStatusDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tts/speak": {
+      "post": {
+        "tags": [
+          "tts"
+        ],
+        "summary": "POST /api/tts/speak",
+        "operationId": "speak",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TtsSpeakRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "音频字节流：本地引擎 audio/wav，豆包引擎 audio/aac（按请求 format）",
+            "content": {
+              "audio/wav": {}
+            }
+          },
+          "400": {
+            "description": "text 为空/超长，或豆包引擎未配置 DOUBAO_COOKIE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "未知音色（仅本地引擎）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "本地引擎模型未安装，先 POST /api/tts/setup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "豆包云端服务异常（连接/协议/服务端错误）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_String"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tts/status": {
+      "get": {
+        "tags": [
+          "tts"
+        ],
+        "summary": "GET /api/tts/status",
+        "operationId": "get_tts_status",
+        "responses": {
+          "200": {
+            "description": "TTS 装配状态与音色表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TtsStatusDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentConfigDto": {
+        "type": "object",
+        "description": "当前 agent 配置（GET 响应；Key 只出脱敏形态）",
+        "required": [
+          "provider",
+          "openai",
+          "anthropic",
+          "max_tokens"
+        ],
+        "properties": {
+          "anthropic": {
+            "$ref": "#/components/schemas/ProviderSettingsDto",
+            "description": "Anthropic Messages 协议连接参数"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "单次回复 token 上限（Anthropic 必填；OpenAI 透传 max_tokens）",
+            "minimum": 0
+          },
+          "openai": {
+            "$ref": "#/components/schemas/ProviderSettingsDto",
+            "description": "OpenAI 兼容协议连接参数（豆包兼容模式 / DeepSeek / Kimi / OpenRouter 等）"
+          },
+          "provider": {
+            "type": "string",
+            "description": "当前生效供应商：`openai` | `anthropic`"
+          }
+        }
+      },
+      "AgentConfigUpdate": {
+        "type": "object",
+        "description": "PUT 请求体：全字段可选，缺省 = 保留现值",
+        "properties": {
+          "anthropic": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderSettingsUpdate"
+              }
+            ]
+          },
+          "max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "单次回复 token 上限；缺省保留",
+            "minimum": 0
+          },
+          "openai": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderSettingsUpdate"
+              }
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "切换供应商（`openai` | `anthropic`）；缺省保留"
+          }
+        }
+      },
+      "ApiResponse_AgentConfigDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "object",
+            "description": "当前 agent 配置（GET 响应；Key 只出脱敏形态）",
+            "required": [
+              "provider",
+              "openai",
+              "anthropic",
+              "max_tokens"
+            ],
+            "properties": {
+              "anthropic": {
+                "$ref": "#/components/schemas/ProviderSettingsDto",
+                "description": "Anthropic Messages 协议连接参数"
+              },
+              "max_tokens": {
+                "type": "integer",
+                "format": "int32",
+                "description": "单次回复 token 上限（Anthropic 必填；OpenAI 透传 max_tokens）",
+                "minimum": 0
+              },
+              "openai": {
+                "$ref": "#/components/schemas/ProviderSettingsDto",
+                "description": "OpenAI 兼容协议连接参数（豆包兼容模式 / DeepSeek / Kimi / OpenRouter 等）"
+              },
+              "provider": {
+                "type": "string",
+                "description": "当前生效供应商：`openai` | `anthropic`"
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_GameMemoryDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "object",
+            "description": "GET /api/game/memory 响应：某玩家视角的对局记忆（决策 prompt 事实段）",
+            "required": [
+              "player",
+              "entries",
+              "rendered"
+            ],
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MemoryEntryDto"
+                },
+                "description": "按天序的事实流水"
+              },
+              "player": {
+                "type": "string",
+                "description": "记忆主体座位"
+              },
+              "rendered": {
+                "type": "string",
+                "description": "渲染后的可读文本（可直接拼入 LLM prompt）"
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_GameStatusDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "object",
+            "description": "GET /api/game/status 响应（各 POST 端点同样返回本结构：操作后的最新状态）",
+            "required": [
+              "status",
+              "seed",
+              "day",
+              "phase",
+              "total",
+              "alive_total",
+              "roles",
+              "seats",
+              "seat_roles",
+              "seat_voices",
+              "events"
+            ],
+            "properties": {
+              "alive_total": {
+                "type": "integer",
+                "format": "int32",
+                "description": "存活人数",
+                "minimum": 0
+              },
+              "board": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "板子预设名；未开局为 null"
+              },
+              "day": {
+                "type": "integer",
+                "format": "int32",
+                "description": "当前天数（第一夜为 1）；未开局为 0",
+                "minimum": 0
+              },
+              "ended_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "结束原因：settled（自然分出胜负）/ manual（手动结束）"
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/GameEventDto"
+                },
+                "description": "上帝视角事件流（按发生顺序）；未开局为空"
+              },
+              "mvp": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MvpDto",
+                    "description": "赛后 MVP 投票（无 MVP 流程的局为 null；见 [`MvpDto`]）"
+                  }
+                ]
+              },
+              "phase": {
+                "type": "string",
+                "description": "局面阶段：idle / night / day_speech / knight_duel / day_vote / hunter_shot / settled"
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RoleStatusDto"
+                },
+                "description": "各身份存活统计"
+              },
+              "seat_roles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "座位 → 角色显示名（上帝视角；未开局为空）"
+              },
+              "seat_voices": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "座位 → Edge TTS 音色（观战语音播报；主持人音色前端固定；未分配为空）"
+              },
+              "seats": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "座位 → 选手名（未开局为空）"
+              },
+              "seed": {
+                "type": "integer",
+                "format": "int64",
+                "description": "开局种子",
+                "minimum": 0
+              },
+              "stale": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "服务器重启导致的中断标记（重启后历史局的降级结算为 true；实时视图为 null）"
+              },
+              "status": {
+                "type": "string",
+                "description": "生命周期：idle / running / paused / ended"
+              },
+              "total": {
+                "type": "integer",
+                "format": "int32",
+                "description": "座位总数",
+                "minimum": 0
+              },
+              "winner": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "胜方：good / werewolf；仅引擎自然结算后有值"
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_MemoryCompactDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "object",
+            "description": "POST /api/game/memory/compact 响应",
+            "required": [
+              "compacted",
+              "entries"
+            ],
+            "properties": {
+              "compacted": {
+                "type": "boolean",
+                "description": "本次是否执行了 LLM 压缩（false = 未超窗，无需压缩，模型未被调用）"
+              },
+              "entries": {
+                "type": "integer",
+                "description": "压缩后的记忆总条数",
+                "minimum": 0
+              },
+              "summary": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "LLM 摘要正文（compacted = false 时为 null）"
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_RoomDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "object",
+            "description": "房间信息",
+            "required": [
+              "code",
+              "name",
+              "board_id",
+              "status",
+              "created_at"
+            ],
+            "properties": {
+              "board_id": {
+                "type": "string",
+                "description": "板子预设名"
+              },
+              "code": {
+                "type": "string",
+                "description": "房间号（6 位大写，唯一）"
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "description": "房间名"
+              },
+              "seats": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/RoomSeatDto"
+                },
+                "description": "席位（详情接口才有）"
+              },
+              "status": {
+                "type": "string",
+                "description": "waiting / playing / finished"
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_RosterPlayerDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "object",
+            "description": "单个选手（GET 响应元素）：覆盖明细 + 合并后的有效配置",
+            "required": [
+              "name",
+              "has_override",
+              "effective"
+            ],
+            "properties": {
+              "avatar": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "自定义头像（emoji 或 URL）；None = 前端用静态资源/首字兑底"
+              },
+              "effective": {
+                "$ref": "#/components/schemas/AgentConfigDto",
+                "description": "有效配置（覆盖合并进全局后；Key 已脱敏）"
+              },
+              "has_override": {
+                "type": "boolean",
+                "description": "是否存在有效覆盖（前端渲染“已单独配置”徽标）"
+              },
+              "name": {
+                "type": "string",
+                "description": "选手名（内置 12 人与前端 AGENT_POOL 对齐；自建选手为用户输入）"
+              },
+              "player_override": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PlayerOverrideDto",
+                    "description": "覆盖明细；None = 完全跟随全局"
+                  }
+                ]
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_ServerInfo": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "object",
+            "description": "服务元信息：前端可用于验证 sidecar 连通性、展示版本与运行时长\n\n前端 DTO 在 apps/web/src/App.tsx 手写对齐（字段变更时同步修改）",
+            "required": [
+              "version",
+              "address",
+              "port",
+              "uptime_secs",
+              "stats"
+            ],
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "绑定地址（来自 AppConfig）"
+              },
+              "port": {
+                "type": "integer",
+                "format": "int32",
+                "description": "绑定端口",
+                "minimum": 0
+              },
+              "stats": {
+                "$ref": "#/components/schemas/ServerStats",
+                "description": "实时请求统计（track 中间件自动采集）"
+              },
+              "uptime_secs": {
+                "type": "integer",
+                "format": "int64",
+                "description": "服务已运行秒数",
+                "minimum": 0
+              },
+              "version": {
+                "type": "string",
+                "description": "server crate 版本（编译期取自 CARGO_PKG_VERSION）"
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_String": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_TtsStatusDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "object",
+            "description": "GET /api/tts/status 响应",
+            "required": [
+              "installed",
+              "phase",
+              "engine_loaded",
+              "cache_dir",
+              "doubao_available",
+              "voices"
+            ],
+            "properties": {
+              "cache_dir": {
+                "type": "string",
+                "description": "模型缓存目录（绝对路径）"
+              },
+              "doubao_available": {
+                "type": "boolean",
+                "description": "豆包云端引擎是否可用（取决于服务端是否配置了 DOUBAO_COOKIE）"
+              },
+              "engine_loaded": {
+                "type": "boolean",
+                "description": "引擎是否已加载（首次合成前为 false）"
+              },
+              "installed": {
+                "type": "boolean",
+                "description": "模型资产是否已安装"
+              },
+              "phase": {
+                "type": "string",
+                "description": "装配阶段：idle / installing / ready / failed"
+              },
+              "voices": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TtsVoiceDto"
+                },
+                "description": "可用音色（12 选手 + 主持人）"
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_Vec_LeaderboardEntryDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "排行榜行（GET 响应元素）",
+              "required": [
+                "name",
+                "games",
+                "wins",
+                "mvp_count",
+                "win_rate"
+              ],
+              "properties": {
+                "games": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "参与的已结束局数"
+                },
+                "mvp_count": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "当选 MVP 次数"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "选手名"
+                },
+                "win_rate": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "胜率（0..1）"
+                },
+                "wins": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "胜场数"
+                }
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_Vec_RoomDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "房间信息",
+              "required": [
+                "code",
+                "name",
+                "board_id",
+                "status",
+                "created_at"
+              ],
+              "properties": {
+                "board_id": {
+                  "type": "string",
+                  "description": "板子预设名"
+                },
+                "code": {
+                  "type": "string",
+                  "description": "房间号（6 位大写，唯一）"
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "房间名"
+                },
+                "seats": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "$ref": "#/components/schemas/RoomSeatDto"
+                  },
+                  "description": "席位（详情接口才有）"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "waiting / playing / finished"
+                }
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_Vec_RosterPlayerDto": {
+        "type": "object",
+        "description": "统一响应包裹：`code === 0` 表示成功\n\n与前端 `packages/shared/src/request/types.ts` 的 `ApiResponse<T>` 同名同构，\n全仓库仅此一处定义，server 侧直接 `use crate::error::ApiResponse`。",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "单个选手（GET 响应元素）：覆盖明细 + 合并后的有效配置",
+              "required": [
+                "name",
+                "has_override",
+                "effective"
+              ],
+              "properties": {
+                "avatar": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "自定义头像（emoji 或 URL）；None = 前端用静态资源/首字兑底"
+                },
+                "effective": {
+                  "$ref": "#/components/schemas/AgentConfigDto",
+                  "description": "有效配置（覆盖合并进全局后；Key 已脱敏）"
+                },
+                "has_override": {
+                  "type": "boolean",
+                  "description": "是否存在有效覆盖（前端渲染“已单独配置”徽标）"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "选手名（内置 12 人与前端 AGENT_POOL 对齐；自建选手为用户输入）"
+                },
+                "player_override": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PlayerOverrideDto",
+                      "description": "覆盖明细；None = 完全跟随全局"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "GameEventDto": {
+        "type": "object",
+        "description": "单条事件（上帝视角；隐私事件同样包含，观战界面自行取舍展示）",
+        "required": [
+          "seq",
+          "day",
+          "kind",
+          "text"
+        ],
+        "properties": {
+          "day": {
+            "type": "integer",
+            "format": "int32",
+            "description": "天数",
+            "minimum": 0
+          },
+          "deaths": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "dawn：昨夜死亡座位列表（平安夜为空）"
+          },
+          "kind": {
+            "type": "string",
+            "description": "事件类型：started / night / night_action / wolf_chat / wolf_pass / dawn /\nspeech / duel / vote / idiot / hunter / died / over"
+          },
+          "seat": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "主角座位（无单一主角的事件为 null）",
+            "minimum": 0
+          },
+          "seq": {
+            "type": "integer",
+            "description": "事件序号（从 0 递增，即引擎事件数组下标）",
+            "minimum": 0
+          },
+          "target": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "vote 放逐座位 / hunter 枪击目标座位 / duel 败者座位",
+            "minimum": 0
+          },
+          "text": {
+            "type": "string",
+            "description": "面向观战者的中文描述"
+          },
+          "tie": {
+            "type": "boolean",
+            "description": "vote：平票（无人放逐）"
+          }
+        }
+      },
+      "GameMemoryDto": {
+        "type": "object",
+        "description": "GET /api/game/memory 响应：某玩家视角的对局记忆（决策 prompt 事实段）",
+        "required": [
+          "player",
+          "entries",
+          "rendered"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntryDto"
+            },
+            "description": "按天序的事实流水"
+          },
+          "player": {
+            "type": "string",
+            "description": "记忆主体座位"
+          },
+          "rendered": {
+            "type": "string",
+            "description": "渲染后的可读文本（可直接拼入 LLM prompt）"
+          }
+        }
+      },
+      "GameQuery": {
+        "type": "object",
+        "description": "game 路由定位参数：`?room=房间码`（优先）或 `?game=对局 id`；都缺省用最近启动的对局",
+        "properties": {
+          "game": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "对局 id（裸局为负数自增 id）"
+          },
+          "room": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "房间码（优先于 game；按 db 该房间最近一局定位）"
+          }
+        }
+      },
+      "GameStartRequest": {
+        "type": "object",
+        "description": "POST /api/game/start 请求体：全字段可选（缺省 = 全明星板 + 随机种子）",
+        "properties": {
+          "board": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "板子预设：`newbie_six`（新手 6 人局）/ `nine_standard`（经典 9 人局，缺省）/ `all_stars`（全明星 12 人局）"
+          },
+          "players": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "座位 → 选手名（长度须等于座位数；缺省取选手名册前 N 位）。\nLLM 决策按名取选手模型配置"
+          },
+          "room_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "房间号（SQLite 房间；传入则身份落库 + 事件流水关联该房间）"
+          },
+          "seed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "随机种子：缺省或 0 = 服务端随机生成；同种子同发牌（可复现）",
+            "minimum": 0
+          }
+        }
+      },
+      "GameStatusDto": {
+        "type": "object",
+        "description": "GET /api/game/status 响应（各 POST 端点同样返回本结构：操作后的最新状态）",
+        "required": [
+          "status",
+          "seed",
+          "day",
+          "phase",
+          "total",
+          "alive_total",
+          "roles",
+          "seats",
+          "seat_roles",
+          "seat_voices",
+          "events"
+        ],
+        "properties": {
+          "alive_total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "存活人数",
+            "minimum": 0
+          },
+          "board": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "板子预设名；未开局为 null"
+          },
+          "day": {
+            "type": "integer",
+            "format": "int32",
+            "description": "当前天数（第一夜为 1）；未开局为 0",
+            "minimum": 0
+          },
+          "ended_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "结束原因：settled（自然分出胜负）/ manual（手动结束）"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameEventDto"
+            },
+            "description": "上帝视角事件流（按发生顺序）；未开局为空"
+          },
+          "mvp": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MvpDto",
+                "description": "赛后 MVP 投票（无 MVP 流程的局为 null；见 [`MvpDto`]）"
+              }
+            ]
+          },
+          "phase": {
+            "type": "string",
+            "description": "局面阶段：idle / night / day_speech / knight_duel / day_vote / hunter_shot / settled"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleStatusDto"
+            },
+            "description": "各身份存活统计"
+          },
+          "seat_roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "座位 → 角色显示名（上帝视角；未开局为空）"
+          },
+          "seat_voices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "座位 → Edge TTS 音色（观战语音播报；主持人音色前端固定；未分配为空）"
+          },
+          "seats": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "座位 → 选手名（未开局为空）"
+          },
+          "seed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "开局种子",
+            "minimum": 0
+          },
+          "stale": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "服务器重启导致的中断标记（重启后历史局的降级结算为 true；实时视图为 null）"
+          },
+          "status": {
+            "type": "string",
+            "description": "生命周期：idle / running / paused / ended"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "座位总数",
+            "minimum": 0
+          },
+          "winner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "胜方：good / werewolf；仅引擎自然结算后有值"
+          }
+        }
+      },
+      "LeaderboardEntryDto": {
+        "type": "object",
+        "description": "排行榜行（GET 响应元素）",
+        "required": [
+          "name",
+          "games",
+          "wins",
+          "mvp_count",
+          "win_rate"
+        ],
+        "properties": {
+          "games": {
+            "type": "integer",
+            "format": "int64",
+            "description": "参与的已结束局数"
+          },
+          "mvp_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "当选 MVP 次数"
+          },
+          "name": {
+            "type": "string",
+            "description": "选手名"
+          },
+          "win_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "胜率（0..1）"
+          },
+          "wins": {
+            "type": "integer",
+            "format": "int64",
+            "description": "胜场数"
+          }
+        }
+      },
+      "MemoryCompactDto": {
+        "type": "object",
+        "description": "POST /api/game/memory/compact 响应",
+        "required": [
+          "compacted",
+          "entries"
+        ],
+        "properties": {
+          "compacted": {
+            "type": "boolean",
+            "description": "本次是否执行了 LLM 压缩（false = 未超窗，无需压缩，模型未被调用）"
+          },
+          "entries": {
+            "type": "integer",
+            "description": "压缩后的记忆总条数",
+            "minimum": 0
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "LLM 摘要正文（compacted = false 时为 null）"
+          }
+        }
+      },
+      "MemoryCompactRequest": {
+        "type": "object",
+        "description": "POST /api/game/memory/compact 请求体",
+        "required": [
+          "player"
+        ],
+        "properties": {
+          "keep_recent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "保留原文的最近条数（缺省 30）：超过部分交 LLM 压缩为摘要",
+            "minimum": 0
+          },
+          "player": {
+            "type": "integer",
+            "format": "int32",
+            "description": "玩家座位号（0 起）",
+            "minimum": 0
+          }
+        }
+      },
+      "MemoryEntryDto": {
+        "type": "object",
+        "description": "单条对局记忆的接口形态（通用记忆模型 + 对局领域标签）",
+        "required": [
+          "seq",
+          "tag",
+          "text"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "int64",
+            "description": "对局天（时间片）",
+            "minimum": 0
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "记录者座位（系统播报为 null）"
+          },
+          "tag": {
+            "type": "string",
+            "description": "领域标签：speech / wolfchat / dawn / vote / seercheck / folded"
+          },
+          "text": {
+            "type": "string",
+            "description": "事实内容"
+          }
+        }
+      },
+      "MemoryQuery": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GameQuery",
+            "description": "对局定位参数（room / game，同 [`GameQuery`]）"
+          },
+          {
+            "type": "object",
+            "required": [
+              "player"
+            ],
+            "properties": {
+              "player": {
+                "type": "integer",
+                "format": "int32",
+                "description": "玩家座位号（0 起）",
+                "minimum": 0
+              }
+            }
+          }
+        ],
+        "description": "GET /api/game/memory 查询参数：玩家座位号（从 0 开始）+ 对局定位"
+      },
+      "MvpDto": {
+        "type": "object",
+        "description": "赛后 MVP 投票状态（仅该局有 MVP 流程时非空；手动终局 / stale 降级局为 null）",
+        "required": [
+          "phase",
+          "votes"
+        ],
+        "properties": {
+          "phase": {
+            "type": "string",
+            "description": "投票阶段：pending（投票中）→ done（已决出，选票从 db 读取）"
+          },
+          "votes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MvpVoteDto"
+            },
+            "description": "全部有效选票（done 后非空）"
+          },
+          "winner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "本场 MVP 选手名；pending 时为 null"
+          }
+        }
+      },
+      "MvpVoteDto": {
+        "type": "object",
+        "description": "单张 MVP 选票",
+        "required": [
+          "voter",
+          "candidate",
+          "reason"
+        ],
+        "properties": {
+          "candidate": {
+            "type": "string",
+            "description": "被投人"
+          },
+          "reason": {
+            "type": "string",
+            "description": "投票理由（LLM 生成，可能为空）"
+          },
+          "voter": {
+            "type": "string",
+            "description": "投票人"
+          }
+        }
+      },
+      "PlayerOverrideDto": {
+        "type": "object",
+        "description": "覆盖明细（GET 响应 / PUT 请求体双形态）：字段缺省 = 继承全局",
+        "properties": {
+          "anthropic": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SettingsPatchDto"
+              }
+            ]
+          },
+          "avatar": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "自定义头像（emoji 或图片 URL）；缺省 = 无自定义"
+          },
+          "max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "单次回复 token 上限；缺省 = 继承全局",
+            "minimum": 0
+          },
+          "openai": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SettingsPatchDto"
+              }
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "切换供应商（`openai` | `anthropic`）；缺省 = 继承全局"
+          },
+          "thinking": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "思考模式（`enabled` | `disabled`）；缺省 = 继承全局（不发参数）"
+          }
+        }
+      },
+      "ProviderSettingsDto": {
+        "type": "object",
+        "description": "单协议连接参数（GET 响应形态）",
+        "required": [
+          "base_url",
+          "model",
+          "api_key_masked",
+          "has_key"
+        ],
+        "properties": {
+          "api_key_masked": {
+            "type": "string",
+            "description": "脱敏后的 Key（保留末 4 位，如 `****abcd`）；未配置为空串"
+          },
+          "base_url": {
+            "type": "string",
+            "description": "API 根地址（不含尾斜杠）"
+          },
+          "has_key": {
+            "type": "boolean",
+            "description": "是否已配置 Key（前端据此渲染\"已配置\"状态，而不是让用户重填）"
+          },
+          "model": {
+            "type": "string",
+            "description": "默认模型"
+          }
+        }
+      },
+      "ProviderSettingsUpdate": {
+        "type": "object",
+        "description": "单协议参数更新。`api_key` 语义：缺省 = 保留现有 Key，空串 = 清除，非空 = 设置",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RoleStatusDto": {
+        "type": "object",
+        "description": "单个身份的存活统计",
+        "required": [
+          "role",
+          "name",
+          "total",
+          "alive"
+        ],
+        "properties": {
+          "alive": {
+            "type": "integer",
+            "format": "int32",
+            "description": "仍存活人数",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "展示名：狼人 / 预言家…"
+          },
+          "role": {
+            "type": "string",
+            "description": "角色代码：werewolf / seer / witch / guard / hunter / idiot / knight / villager"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "该身份总人数",
+            "minimum": 0
+          }
+        }
+      },
+      "RoomCreateRequest": {
+        "type": "object",
+        "description": "POST /api/rooms 请求体",
+        "required": [
+          "board_id",
+          "players"
+        ],
+        "properties": {
+          "board_id": {
+            "type": "string",
+            "description": "板子预设名（newbie_six / nine_standard / all_stars）"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "房间名（缺省「{board} 房间」）"
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "参赛选手名（按座位序；长度须等于板子座位数）"
+          }
+        }
+      },
+      "RoomDto": {
+        "type": "object",
+        "description": "房间信息",
+        "required": [
+          "code",
+          "name",
+          "board_id",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "board_id": {
+            "type": "string",
+            "description": "板子预设名"
+          },
+          "code": {
+            "type": "string",
+            "description": "房间号（6 位大写，唯一）"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "房间名"
+          },
+          "seats": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/RoomSeatDto"
+            },
+            "description": "席位（详情接口才有）"
+          },
+          "status": {
+            "type": "string",
+            "description": "waiting / playing / finished"
+          }
+        }
+      },
+      "RoomSeatDto": {
+        "type": "object",
+        "description": "房间席位",
+        "required": [
+          "seat",
+          "name",
+          "alive"
+        ],
+        "properties": {
+          "alive": {
+            "type": "boolean",
+            "description": "是否存活"
+          },
+          "name": {
+            "type": "string",
+            "description": "选手名"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "真实身份（发牌后才有；上帝视角）"
+          },
+          "seat": {
+            "type": "integer",
+            "format": "int32",
+            "description": "座位号（1 起）",
+            "minimum": 0
+          }
+        }
+      },
+      "RosterPlayerDto": {
+        "type": "object",
+        "description": "单个选手（GET 响应元素）：覆盖明细 + 合并后的有效配置",
+        "required": [
+          "name",
+          "has_override",
+          "effective"
+        ],
+        "properties": {
+          "avatar": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "自定义头像（emoji 或 URL）；None = 前端用静态资源/首字兑底"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/AgentConfigDto",
+            "description": "有效配置（覆盖合并进全局后；Key 已脱敏）"
+          },
+          "has_override": {
+            "type": "boolean",
+            "description": "是否存在有效覆盖（前端渲染“已单独配置”徽标）"
+          },
+          "name": {
+            "type": "string",
+            "description": "选手名（内置 12 人与前端 AGENT_POOL 对齐；自建选手为用户输入）"
+          },
+          "player_override": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlayerOverrideDto",
+                "description": "覆盖明细；None = 完全跟随全局"
+              }
+            ]
+          }
+        }
+      },
+      "ServerInfo": {
+        "type": "object",
+        "description": "服务元信息：前端可用于验证 sidecar 连通性、展示版本与运行时长\n\n前端 DTO 在 apps/web/src/App.tsx 手写对齐（字段变更时同步修改）",
+        "required": [
+          "version",
+          "address",
+          "port",
+          "uptime_secs",
+          "stats"
+        ],
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "绑定地址（来自 AppConfig）"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32",
+            "description": "绑定端口",
+            "minimum": 0
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ServerStats",
+            "description": "实时请求统计（track 中间件自动采集）"
+          },
+          "uptime_secs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务已运行秒数",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string",
+            "description": "server crate 版本（编译期取自 CARGO_PKG_VERSION）"
+          }
+        }
+      },
+      "ServerStats": {
+        "type": "object",
+        "description": "请求统计快照（字段与 state::Stats 的访问器一一对应）",
+        "required": [
+          "total",
+          "active",
+          "ok",
+          "client_errors",
+          "server_errors"
+        ],
+        "properties": {
+          "active": {
+            "type": "integer",
+            "format": "int64",
+            "description": "进行中请求数",
+            "minimum": 0
+          },
+          "client_errors": {
+            "type": "integer",
+            "format": "int64",
+            "description": "4xx 响应数",
+            "minimum": 0
+          },
+          "ok": {
+            "type": "integer",
+            "format": "int64",
+            "description": "2xx 响应数",
+            "minimum": 0
+          },
+          "server_errors": {
+            "type": "integer",
+            "format": "int64",
+            "description": "5xx 响应数",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "自启动以来总请求数",
+            "minimum": 0
+          }
+        }
+      },
+      "SettingsPatchDto": {
+        "type": "object",
+        "description": "单协议连接参数覆盖；字段缺省 = 继承全局。\nGET 响应中 `api_key` 恒为 null（脱敏到 `api_key_masked`），PUT 才接受真值",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API Key；缺省 = 继承全局，空串 = 明确清空。仅 PUT 接受；GET 恒为 null"
+          },
+          "api_key_masked": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "脱敏 Key（保留末 4 位）；仅 GET 返回，PUT 忽略"
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TtsSpeakRequest": {
+        "type": "object",
+        "description": "POST /api/tts/speak 请求体",
+        "required": [
+          "voice",
+          "text"
+        ],
+        "properties": {
+          "engine": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "引擎：省略或 `local` 走本地 kokoro（WAV）；`doubao` 走豆包官方云端（AAC）"
+          },
+          "text": {
+            "type": "string",
+            "description": "要朗读的台词（≤500 字符）"
+          },
+          "voice": {
+            "type": "string",
+            "description": "音色 id（`zf_001`）或选手名（`豆包` / `主持人`）；豆包引擎传简称（`taozi`）"
+          }
+        }
+      },
+      "TtsStatusDto": {
+        "type": "object",
+        "description": "GET /api/tts/status 响应",
+        "required": [
+          "installed",
+          "phase",
+          "engine_loaded",
+          "cache_dir",
+          "doubao_available",
+          "voices"
+        ],
+        "properties": {
+          "cache_dir": {
+            "type": "string",
+            "description": "模型缓存目录（绝对路径）"
+          },
+          "doubao_available": {
+            "type": "boolean",
+            "description": "豆包云端引擎是否可用（取决于服务端是否配置了 DOUBAO_COOKIE）"
+          },
+          "engine_loaded": {
+            "type": "boolean",
+            "description": "引擎是否已加载（首次合成前为 false）"
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "模型资产是否已安装"
+          },
+          "phase": {
+            "type": "string",
+            "description": "装配阶段：idle / installing / ready / failed"
+          },
+          "voices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TtsVoiceDto"
+            },
+            "description": "可用音色（12 选手 + 主持人）"
+          }
+        }
+      },
+      "TtsVoiceDto": {
+        "type": "object",
+        "description": "音色项",
+        "required": [
+          "id",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "音色 id（speak 的 voice 字段）"
+          },
+          "label": {
+            "type": "string",
+            "description": "展示名（选手名 / 主持人）"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "agent",
+      "description": "agent 配置：设置页读写通道（Key 脱敏返回）"
+    },
+    {
+      "name": "roster",
+      "description": "选手级模型配置：12 名选手各自的 provider/模型/Key 覆盖，未覆盖字段继承全局 agent 配置"
+    },
+    {
+      "name": "rooms",
+      "description": "狼人杀房间（SQLite 落库）：创建 / 列表 / 详情；发牌后详情含真实身份"
+    },
+    {
+      "name": "werewolf",
+      "description": "狼人杀对局控制面：开始 / 暂停 / 继续 / 结束 / 状态查询；所有 POST 成功与 GET 均返回最新 GameStatusDto"
+    },
+    {
+      "name": "tts",
+      "description": "本地语音合成： kokoro 模型装配（status/setup）与台词合成（speak，返回 audio/wav）"
+    },
+    {
+      "name": "system",
+      "description": "探活与服务元信息"
+    }
+  ]
+}
