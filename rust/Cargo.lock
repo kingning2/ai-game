@@ -1592,6 +1592,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "game-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "game-events"
+version = "0.1.0"
+dependencies = [
+ "game-domain",
+ "macros",
+ "serde",
+]
+
+[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5810,6 +5828,8 @@ dependencies = [
 name = "werewolf"
 version = "0.1.0"
 dependencies = [
+ "game-domain",
+ "game-events",
  "macros",
  "serde",
  "serde_json",

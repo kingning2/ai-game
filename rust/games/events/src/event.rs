@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use macros::game_event;
 
-use crate::action::Action;
-use crate::phase::{DeathCause, Outcome, PlayerId, PlayerRole};
+use game_domain::action::Action;
+use game_domain::phase::{DeathCause, Outcome, PlayerId, PlayerRole};
 
 /// 引擎产出的对局事件——既是对局日志（前端 EventFeed 数据源），
 /// 也是调用方推进 LLM Agent 决策的事实流。

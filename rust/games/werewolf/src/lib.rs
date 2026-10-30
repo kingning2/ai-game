@@ -52,14 +52,11 @@
 //! 服务端接线（房间管理 / SSE 快照推送）与 LLM 决策层后续分层接入；
 //! 对齐的前端类型见 `apps/web/src/werewolf/types.ts`（`GameSnapshot` 观战页契约）。
 
-pub mod action;
-pub mod board;
+pub use game_domain::{action, board, error, phase, role, script};
+pub use game_events::event;
+
 pub mod engine;
-pub mod error;
-pub mod event;
-pub mod phase;
 pub mod player;
-pub mod role;
 pub mod snapshot;
 pub mod summary;
 

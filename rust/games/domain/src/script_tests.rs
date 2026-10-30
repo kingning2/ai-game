@@ -38,7 +38,8 @@ fn every_script_maps_to_consistent_board() {
             *counts.entry(role).or_insert(0) += 1;
         }
         for (code, count) in script.roles {
-            let role = role_of(code).unwrap_or_else(|| panic!("剧本 {} 的未知角色代码 {code}", script.id));
+            let role =
+                role_of(code).unwrap_or_else(|| panic!("剧本 {} 的未知角色代码 {code}", script.id));
             assert_eq!(
                 counts.get(&role).copied().unwrap_or(0),
                 *count,
@@ -86,8 +87,14 @@ fn script_lookup_by_id() {
 #[test]
 fn unknown_board_id_falls_back_to_nine_standard() {
     // board() 的兜底分支：未知 id 走标准局（引擎侧仍会校验，不会静默开局错误板子）
-    assert_eq!(script("newbie_six").unwrap().board(), crate::board::BoardConfig::newbie_six());
-    assert_eq!(script("all_stars").unwrap().board(), crate::board::BoardConfig::all_stars());
+    assert_eq!(
+        script("newbie_six").unwrap().board(),
+        crate::board::BoardConfig::newbie_six()
+    );
+    assert_eq!(
+        script("all_stars").unwrap().board(),
+        crate::board::BoardConfig::all_stars()
+    );
     let fallback = ScriptDef {
         id: "typo_id",
         name: "x",

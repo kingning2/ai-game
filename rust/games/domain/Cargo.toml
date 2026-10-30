@@ -1,0 +1,17 @@
+[package]
+name = "game-domain"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+description = "狼人杀领域层：角色 / 阶段 / 动作意图 / 板子 / 错误 / 剧本（纯类型与规则，零 IO，不依赖 ECS）"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

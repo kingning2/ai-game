@@ -1,0 +1,17 @@
+[package]
+name = "game-events"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+description = "狼人杀事件层：GameEvent 业务事实（seq 单调、可回放），依赖 game-domain，不依赖 ECS"
+
+[dependencies]
+game-domain = { path = "../domain" }
+macros.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+
+[lints]
+workspace = true

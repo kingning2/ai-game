@@ -8,6 +8,8 @@ members = [
   "state",
   "agent",
   "games/werewolf",
+  "games/domain",
+  "games/events",
   "memory",
   "db",
   "macros",
@@ -59,6 +61,8 @@ utils = { path = "utils" }
 state = { path = "state" }
 agent = { path = "agent" }
 werewolf = { path = "games/werewolf" }
+game-domain = { path = "games/domain" }
+game-events = { path = "games/events" }
 memory = { path = "memory" }
 tts = { path = "tts" }
 db = { path = "db" }
