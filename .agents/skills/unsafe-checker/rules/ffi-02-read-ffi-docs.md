@@ -111,14 +111,14 @@ unsafe {
 
 ## Type Selection Guide
 
-| Scenario | Type |
-|----------|------|
-| Create string for C | `CString` |
-| Borrow string from C | `&CStr` |
-| File paths | `OsString`, `Path` |
-| Environment variables | `OsString` |
-| Opaque C pointers | Newtype over `*mut c_void` |
-| C integers | `c_int`, `c_long`, etc. |
+| Scenario              | Type                       |
+| --------------------- | -------------------------- |
+| Create string for C   | `CString`                  |
+| Borrow string from C  | `&CStr`                    |
+| File paths            | `OsString`, `Path`         |
+| Environment variables | `OsString`                 |
+| Opaque C pointers     | Newtype over `*mut c_void` |
+| C integers            | `c_int`, `c_long`, etc.    |
 
 ## Checklist
 

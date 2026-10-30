@@ -100,14 +100,14 @@ extern "C" fn good_callback(s: *const c_char) {
 
 ## String Type Comparison
 
-| Type | Null-terminated | Encoding | Use |
-|------|-----------------|----------|-----|
-| `String` | No | UTF-8 | Rust owned |
-| `&str` | No | UTF-8 | Rust borrowed |
-| `CString` | Yes | Byte | Rust-to-C owned |
-| `&CStr` | Yes | Byte | Rust-to-C borrowed |
-| `*const c_char` | Yes | Byte | FFI pointer |
-| `OsString` | Platform | Platform | Paths, env |
+| Type            | Null-terminated | Encoding | Use                |
+| --------------- | --------------- | -------- | ------------------ |
+| `String`        | No              | UTF-8    | Rust owned         |
+| `&str`          | No              | UTF-8    | Rust borrowed      |
+| `CString`       | Yes             | Byte     | Rust-to-C owned    |
+| `&CStr`         | Yes             | Byte     | Rust-to-C borrowed |
+| `*const c_char` | Yes             | Byte     | FFI pointer        |
+| `OsString`      | Platform        | Platform | Paths, env         |
 
 ## Checklist
 

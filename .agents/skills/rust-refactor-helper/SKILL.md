@@ -1,8 +1,8 @@
 ---
 name: rust-refactor-helper
-description: "Safe Rust refactoring with LSP analysis. Triggers on: /refactor, rename symbol, move function, extract, 重构, 重命名, 提取函数, 安全重构"
-argument-hint: "<action> <target> [--dry-run]"
-allowed-tools: ["LSP", "Read", "Glob", "Grep", "Edit"]
+description: 'Safe Rust refactoring with LSP analysis. Triggers on: /refactor, rename symbol, move function, extract, 重构, 重命名, 提取函数, 安全重构'
+argument-hint: '<action> <target> [--dry-run]'
+allowed-tools: ['LSP', 'Read', 'Glob', 'Grep', 'Edit']
 ---
 
 # Rust Refactor Helper
@@ -16,12 +16,14 @@ Perform safe refactoring with comprehensive impact analysis.
 ```
 
 **Actions:**
+
 - `rename <old> <new>` - Rename symbol
 - `extract-fn <selection>` - Extract to function
 - `inline <fn>` - Inline function
 - `move <symbol> <dest>` - Move to module
 
 **Examples:**
+
 - `/rust-refactor-helper rename parse_config load_config`
 - `/rust-refactor-helper extract-fn src/main.rs:20-35`
 - `/rust-refactor-helper move UserService src/services/`
@@ -146,7 +148,7 @@ User: "Extract lines 20-35 in main.rs to a function"
 
 **Output:**
 
-```
+````
 ## Extract Function: src/main.rs:20-35
 
 ### Selected Code
@@ -182,7 +184,7 @@ fn load_and_validate_config(path: &Path) -> Result<Config> {
 ​```rust
 let config = load_and_validate_config(&path)?;
 ​```
-```
+````
 
 ### 3. Move Symbol
 
@@ -208,7 +210,7 @@ User: "Move UserService to src/services/"
 
 **Output:**
 
-```
+````
 ## Move: UserService → src/services/user.rs
 
 ### Current Location
@@ -240,18 +242,18 @@ src/
 
 ### Circular Dependency Check
 ✅ No circular dependencies detected
-```
+````
 
 ## Safety Checks
 
-| Check | Purpose |
-|-------|---------|
-| Reference completeness | Ensure all uses are found |
-| Name conflicts | Detect existing symbols with same name |
-| Visibility changes | Warn if pub/private scope changes |
-| Macro-generated code | Warn about code in macros |
-| Documentation | Flag doc comments mentioning symbol |
-| Test coverage | Show affected tests |
+| Check                  | Purpose                                |
+| ---------------------- | -------------------------------------- |
+| Reference completeness | Ensure all uses are found              |
+| Name conflicts         | Detect existing symbols with same name |
+| Visibility changes     | Warn if pub/private scope changes      |
+| Macro-generated code   | Warn about code in macros              |
+| Documentation          | Flag doc comments mentioning symbol    |
+| Test coverage          | Show affected tests                    |
 
 ## Dry Run Mode
 
@@ -265,9 +267,9 @@ This shows all changes without applying them.
 
 ## Related Skills
 
-| When | See |
-|------|-----|
-| Navigate to symbol | rust-code-navigator |
-| Understand call flow | rust-call-graph |
-| Project structure | rust-symbol-analyzer |
-| Trait implementations | rust-trait-explorer |
+| When                  | See                  |
+| --------------------- | -------------------- |
+| Navigate to symbol    | rust-code-navigator  |
+| Understand call flow  | rust-call-graph      |
+| Project structure     | rust-symbol-analyzer |
+| Trait implementations | rust-trait-explorer  |

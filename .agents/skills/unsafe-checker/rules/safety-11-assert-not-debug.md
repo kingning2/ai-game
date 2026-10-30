@@ -67,11 +67,11 @@ pub fn get_checked(slice: &[i32], index: usize) -> Option<&i32> {
 
 ## When to Use Each
 
-| Assertion | Use When |
-|-----------|----------|
-| `assert!` | Invariant is not already checked; function is called with untrusted input |
+| Assertion       | Use When                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `assert!`       | Invariant is not already checked; function is called with untrusted input                 |
 | `debug_assert!` | Invariant is the caller's responsibility (documented in `# Safety`); performance-critical |
-| No assert | Invariant is enforced by types or prior checks in the same function |
+| No assert       | Invariant is enforced by types or prior checks in the same function                       |
 
 ## Hybrid Approach
 

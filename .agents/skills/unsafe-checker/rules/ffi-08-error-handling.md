@@ -125,13 +125,13 @@ pub extern "C" fn get_error_message(buf: *mut c_char, len: usize) -> c_int {
 
 ## Error Handling Patterns
 
-| Pattern | Usage |
-|---------|-------|
-| Return code | Simple success/failure |
+| Pattern                 | Usage                   |
+| ----------------------- | ----------------------- |
+| Return code             | Simple success/failure  |
 | Return code + out param | Return value on success |
-| errno | POSIX-style APIs |
-| Error message function | Detailed error info |
-| Last-error thread-local | Windows-style APIs |
+| errno                   | POSIX-style APIs        |
+| Error message function  | Detailed error info     |
+| Last-error thread-local | Windows-style APIs      |
 
 ## Checklist
 

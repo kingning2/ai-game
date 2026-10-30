@@ -96,17 +96,17 @@ fn best_random() -> u32 {
 
 ## Common Non-Reentrant Functions
 
-| Non-Reentrant | Reentrant | Rust Alternative |
-|---------------|-----------|------------------|
-| `strtok` | `strtok_r` | `str::split` |
-| `localtime` | `localtime_r` | `chrono` crate |
-| `gmtime` | `gmtime_r` | `chrono` crate |
-| `ctime` | `ctime_r` | `chrono` crate |
-| `rand` | `rand_r` | `rand` crate |
-| `strerror` | `strerror_r` | `std::io::Error` |
-| `getenv` | None (inherent race) | `std::env::var` (not atomic) |
-| `readdir` | `readdir_r` | `std::fs::read_dir` |
-| `gethostbyname` | `getaddrinfo` | `std::net::ToSocketAddrs` |
+| Non-Reentrant   | Reentrant            | Rust Alternative             |
+| --------------- | -------------------- | ---------------------------- |
+| `strtok`        | `strtok_r`           | `str::split`                 |
+| `localtime`     | `localtime_r`        | `chrono` crate               |
+| `gmtime`        | `gmtime_r`           | `chrono` crate               |
+| `ctime`         | `ctime_r`            | `chrono` crate               |
+| `rand`          | `rand_r`             | `rand` crate                 |
+| `strerror`      | `strerror_r`         | `std::io::Error`             |
+| `getenv`        | None (inherent race) | `std::env::var` (not atomic) |
+| `readdir`       | `readdir_r`          | `std::fs::read_dir`          |
+| `gethostbyname` | `getaddrinfo`        | `std::net::ToSocketAddrs`    |
 
 ## Checklist
 

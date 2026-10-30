@@ -20,13 +20,13 @@ how to keep semver honest, and the policies for `Cargo.lock` and the minimum sup
 
 Decide per crate and write it down in the manifest:
 
-| Crate kind | `publish` | Why |
-|------------|-----------|-----|
-| Library meant for crates.io | omit (or a registry list) | needs `description`, `license`/`license-file`, versioned deps |
-| Proc-macro crate of a published library | omit | published together with the runtime crate |
-| Binary / service (`apps/*`) | `false` | deployed, not published (or published deliberately as a `cargo install` tool) |
-| `xtask`, `test-support`, `e2e`, `benches`, `workspace-hack` | `false` | never meant for others |
-| Company-internal library | `["company-registry"]` | can only go to the named registry |
+| Crate kind                                                  | `publish`                 | Why                                                                           |
+| ----------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------- |
+| Library meant for crates.io                                 | omit (or a registry list) | needs `description`, `license`/`license-file`, versioned deps                 |
+| Proc-macro crate of a published library                     | omit                      | published together with the runtime crate                                     |
+| Binary / service (`apps/*`)                                 | `false`                   | deployed, not published (or published deliberately as a `cargo install` tool) |
+| `xtask`, `test-support`, `e2e`, `benches`, `workspace-hack` | `false`                   | never meant for others                                                        |
+| Company-internal library                                    | `["company-registry"]`    | can only go to the named registry                                             |
 
 `publish = false` makes `cargo publish` refuse, lets release tools skip the crate, and allows path-only
 dependencies. A crate without `description` or `license` cannot be published to crates.io anyway; saying
@@ -41,7 +41,7 @@ Workspace-wide default with opt-in:
 publish = false
 # the few published crates
 [package]
-publish = true          # an explicit value in the member overrides; do not inherit here
+publish = true # an explicit value in the member overrides; do not inherit here
 ```
 
 ## Internal dependencies: path plus version
@@ -53,7 +53,7 @@ manifest points at the crates.io release.
 # root Cargo.toml
 [workspace.dependencies]
 shop-domain = { path = "crates/shop-domain", version = "0.3.0" }
-shop-macros = { path = "crates/shop-macros", version = "=0.3.0" }   # exact pin for a tightly coupled macro crate
+shop-macros = { path = "crates/shop-macros", version = "=0.3.0" } # exact pin for a tightly coupled macro crate
 ```
 
 ```toml
@@ -87,13 +87,14 @@ shop-macros.workspace = true
 
 ## Versioning strategies
 
-| Strategy | How | Good for | Cost |
-|----------|-----|----------|------|
-| Lockstep | `version.workspace = true` everywhere; one version for all | tightly coupled crates released together (a framework and its macros) | unchanged crates get new versions |
-| Independent | each crate sets its own `version` | loosely coupled libraries with separate users | must track which dependents need bumps |
-| Hybrid | lockstep for a core group, independent for satellites | most real projects | discipline |
+| Strategy    | How                                                        | Good for                                                              | Cost                                   |
+| ----------- | ---------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------- |
+| Lockstep    | `version.workspace = true` everywhere; one version for all | tightly coupled crates released together (a framework and its macros) | unchanged crates get new versions      |
+| Independent | each crate sets its own `version`                          | loosely coupled libraries with separate users                         | must track which dependents need bumps |
+| Hybrid      | lockstep for a core group, independent for satellites      | most real projects                                                    | discipline                             |
 
 Semver for Rust crates (Cargo's interpretation):
+
 - `1.2.3 -> 1.2.4`: bug fixes; `1.2 -> 1.3`: additive changes; `1.x -> 2.0`: breaking changes.
 - Below 1.0 the left-most non-zero component is the "major": `0.3.1 -> 0.4.0` is breaking, `0.3.1 -> 0.3.2` is
   not. A caret requirement `"0.3"` means `>=0.3.0, <0.4.0`.
@@ -108,14 +109,14 @@ Crates must be published bottom-up: a dependency has to exist on the registry be
 version can be published. `/tmp/crate_graph .` lists crates by layer; publish layer 0
 first.
 
-| Tool | What it does |
-|------|--------------|
-| `cargo publish -p crate` | publishes one package; you handle order and version bumps |
-| `cargo publish --workspace` | Cargo 1.90+: publishes several packages, ordering them by dependencies |
-| release-plz | opens a release PR with version bumps and changelogs from conventional commits, publishes on merge; uses cargo-semver-checks |
-| cargo-release (`cargo release`) | bumps versions, tags, publishes in order, pushes; configurable per workspace |
-| cargo-workspaces (`cargo ws`) | lerna-style: list changed crates, version, publish |
-| cargo-dist | builds and uploads release artefacts (binaries, installers) for `apps/*` |
+| Tool                            | What it does                                                                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `cargo publish -p crate`        | publishes one package; you handle order and version bumps                                                                    |
+| `cargo publish --workspace`     | Cargo 1.90+: publishes several packages, ordering them by dependencies                                                       |
+| release-plz                     | opens a release PR with version bumps and changelogs from conventional commits, publishes on merge; uses cargo-semver-checks |
+| cargo-release (`cargo release`) | bumps versions, tags, publishes in order, pushes; configurable per workspace                                                 |
+| cargo-workspaces (`cargo ws`)   | lerna-style: list changed crates, version, publish                                                                           |
+| cargo-dist                      | builds and uploads release artefacts (binaries, installers) for `apps/*`                                                     |
 
 Whatever the tool, the steps are: bump versions (including requirements of internal dependents), update the
 changelog, `cargo publish --dry-run` in dependency order, tag, publish, push.
@@ -142,6 +143,7 @@ The Cargo team changed its guidance in August 2023 ("Change in Guidance on Commi
 `cargo new` no longer adds `Cargo.lock` to `.gitignore` for libraries.
 
 Why it matters for workspaces:
+
 - There is one `Cargo.lock` for the whole workspace at the root; members never have their own.
 - CI with `--locked` fails when the lock file is missing or out of date, so dependency changes appear in
   reviewed diffs, not as surprise breakages on a Tuesday.
@@ -149,7 +151,7 @@ Why it matters for workspaces:
 - Published libraries' lock files are ignored by their users (except for `cargo install --locked`), so committing
   one costs users nothing.
 
-What a committed lock does *not* do: test your library against the newest compatible versions your users will
+What a committed lock does _not_ do: test your library against the newest compatible versions your users will
 get. Add a scheduled job for that:
 
 ```bash
@@ -172,7 +174,7 @@ Declare it, test it, and decide how you raise it.
 
 ```toml
 [workspace.package]
-rust-version = "1.85"      # members: rust-version.workspace = true
+rust-version = "1.85" # members: rust-version.workspace = true
 ```
 
 - **Declare**: `rust-version` makes Cargo fail early with "package X cannot be built because it requires rustc
@@ -201,7 +203,7 @@ rust-version = "1.85"      # members: rust-version.workspace = true
 
 ```toml
 [patch.crates-io]
-hyper = { git = "https://github.com/acme/hyper", rev = "0c5f8e1" }   # upstream PR #3721; remove after 1.5.1
+hyper = { git = "https://github.com/acme/hyper", rev = "0c5f8e1" } # upstream PR #3721; remove after 1.5.1
 ```
 
 ## Private registries

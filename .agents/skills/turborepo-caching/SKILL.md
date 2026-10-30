@@ -144,7 +144,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -160,32 +160,32 @@ jobs:
 
 ```typescript
 // Custom remote cache server (Express)
-import express from "express";
-import { createReadStream, createWriteStream } from "fs";
-import { mkdir } from "fs/promises";
-import { join } from "path";
+import express from 'express';
+import { createReadStream, createWriteStream } from 'fs';
+import { mkdir } from 'fs/promises';
+import { join } from 'path';
 
 const app = express();
-const CACHE_DIR = "./cache";
+const CACHE_DIR = './cache';
 
 // Get artifact
-app.get("/v8/artifacts/:hash", async (req, res) => {
+app.get('/v8/artifacts/:hash', async (req, res) => {
   const { hash } = req.params;
-  const team = req.query.teamId || "default";
+  const team = req.query.teamId || 'default';
   const filePath = join(CACHE_DIR, team, hash);
 
   try {
     const stream = createReadStream(filePath);
     stream.pipe(res);
   } catch {
-    res.status(404).send("Not found");
+    res.status(404).send('Not found');
   }
 });
 
 // Put artifact
-app.put("/v8/artifacts/:hash", async (req, res) => {
+app.put('/v8/artifacts/:hash', async (req, res) => {
   const { hash } = req.params;
-  const team = req.query.teamId || "default";
+  const team = req.query.teamId || 'default';
   const dir = join(CACHE_DIR, team);
   const filePath = join(dir, hash);
 
@@ -194,17 +194,17 @@ app.put("/v8/artifacts/:hash", async (req, res) => {
   const stream = createWriteStream(filePath);
   req.pipe(stream);
 
-  stream.on("finish", () => {
+  stream.on('finish', () => {
     res.json({
-      urls: [`${req.protocol}://${req.get("host")}/v8/artifacts/${hash}`],
+      urls: [`${req.protocol}://${req.get('host')}/v8/artifacts/${hash}`],
     });
   });
 });
 
 // Check artifact exists
-app.head("/v8/artifacts/:hash", async (req, res) => {
+app.head('/v8/artifacts/:hash', async (req, res) => {
   const { hash } = req.params;
-  const team = req.query.teamId || "default";
+  const team = req.query.teamId || 'default';
   const filePath = join(CACHE_DIR, team, hash);
 
   try {
@@ -215,7 +215,7 @@ app.head("/v8/artifacts/:hash", async (req, res) => {
   }
 });
 
-app.listen(3000, "127.0.0.1");
+app.listen(3000, '127.0.0.1');
 ```
 
 ```json

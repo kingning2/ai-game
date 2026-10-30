@@ -104,14 +104,14 @@ impl Drop for SharedBuffer {
 
 ## Memory Allocation Compatibility
 
-| Allocator | Can use Rust Vec/String/Box? |
-|-----------|------------------------------|
-| Rust global allocator | Yes |
-| C malloc | No - use wrapper with C free |
-| C++ new | No - use wrapper with C++ delete |
-| Custom allocator | No - use allocator_api |
-| mmap/shared memory | No - use munmap |
-| Stack/static | No - never "free" |
+| Allocator             | Can use Rust Vec/String/Box?     |
+| --------------------- | -------------------------------- |
+| Rust global allocator | Yes                              |
+| C malloc              | No - use wrapper with C free     |
+| C++ new               | No - use wrapper with C++ delete |
+| Custom allocator      | No - use allocator_api           |
+| mmap/shared memory    | No - use munmap                  |
+| Stack/static          | No - never "free"                |
 
 ## Checklist
 

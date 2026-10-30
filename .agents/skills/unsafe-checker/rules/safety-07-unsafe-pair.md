@@ -81,11 +81,11 @@ impl<T> MySlice<T> {
 
 ## Standard Library Patterns
 
-| Safe Method | Unsafe Counterpart |
-|-------------|-------------------|
-| `slice.get(i)` | `slice.get_unchecked(i)` |
-| `str.chars().nth(i)` | `str.get_unchecked(range)` |
-| `vec.pop()` | `vec.set_len()` + `ptr::read` |
+| Safe Method           | Unsafe Counterpart              |
+| --------------------- | ------------------------------- |
+| `slice.get(i)`        | `slice.get_unchecked(i)`        |
+| `str.chars().nth(i)`  | `str.get_unchecked(range)`      |
+| `vec.pop()`           | `vec.set_len()` + `ptr::read`   |
 | `String::from_utf8()` | `String::from_utf8_unchecked()` |
 
 ## Naming Conventions

@@ -1,7 +1,7 @@
 ---
 name: meta-cognition-parallel
-description: "EXPERIMENTAL: Three-layer parallel meta-cognition analysis. Triggers on: /meta-parallel, 三层分析, parallel analysis, 并行元认知"
-argument-hint: "<rust_question>"
+description: 'EXPERIMENTAL: Three-layer parallel meta-cognition analysis. Triggers on: /meta-parallel, 三层分析, parallel analysis, 并行元认知'
+argument-hint: '<rust_question>'
 ---
 
 # Meta-Cognition Parallel Analysis (Experimental)
@@ -47,6 +47,7 @@ Domain-Correct Architectural Solution
 ```
 
 **Example:**
+
 ```
 /meta-parallel 我的交易系统报 E0382 错误，应该用 clone 吗？
 ```
@@ -56,6 +57,7 @@ Domain-Correct Architectural Solution
 **CRITICAL: Check agent file availability first to determine execution mode.**
 
 Try to read layer analyzer files:
+
 - `../../agents/layer1-analyzer.md`
 - `../../agents/layer2-analyzer.md`
 - `../../agents/layer3-analyzer.md`
@@ -69,6 +71,7 @@ Try to read layer analyzer files:
 ### Step 1: Parse User Query
 
 Extract from `$ARGUMENTS`:
+
 - The original question
 - Any code snippets
 - Domain hints (trading, web, embedded, etc.)
@@ -128,6 +131,7 @@ Analyze the Rust language mechanics involved:
 ## Layer 1: Language Mechanics
 
 **Error/Pattern Identified:**
+
 - Error code: E0XXX (if applicable)
 - Pattern: ownership/borrowing/lifetime/etc.
 
@@ -135,6 +139,7 @@ Analyze the Rust language mechanics involved:
 [Explain why this error occurs in terms of Rust's ownership model]
 
 **Language-Level Solutions:**
+
 1. [Solution 1]: description
 2. [Solution 2]: description
 
@@ -143,6 +148,7 @@ Analyze the Rust language mechanics involved:
 ```
 
 **Focus areas:**
+
 - Ownership rules (move, copy, borrow)
 - Lifetime annotations
 - Borrowing rules (shared vs mutable)
@@ -156,14 +162,16 @@ Analyze the design patterns and trade-offs:
 ## Layer 2: Design Choices
 
 **Design Pattern Context:**
+
 - Current approach: [What pattern is being used]
 - Problem: [Why it conflicts with Rust's rules]
 
 **Design Alternatives:**
-| Pattern | Pros | Cons | When to Use |
-|---------|------|------|-------------|
-| Pattern A | ... | ... | ... |
-| Pattern B | ... | ... | ... |
+
+| Pattern   | Pros | Cons | When to Use |
+| --------- | ---- | ---- | ----------- |
+| Pattern A | ...  | ...  | ...         |
+| Pattern B | ...  | ...  | ...         |
 
 **Recommended Pattern:**
 [Which pattern fits best and why]
@@ -173,6 +181,7 @@ Analyze the design patterns and trade-offs:
 ```
 
 **Focus areas:**
+
 - Smart pointer choices (Box, Rc, Arc)
 - Interior mutability patterns (Cell, RefCell, Mutex)
 - Ownership transfer vs sharing
@@ -188,16 +197,19 @@ Analyze domain-specific requirements:
 **Domain Identified:** [trading/fintech | web | CLI | embedded | etc.]
 
 **Domain-Specific Requirements:**
+
 - [ ] Performance: [requirements]
 - [ ] Safety: [requirements]
 - [ ] Concurrency: [requirements]
 - [ ] Auditability: [requirements]
 
 **Domain Best Practices:**
+
 1. [Best practice 1]
 2. [Best practice 2]
 
 **Constraints on Solution:**
+
 - MUST: [hard requirements]
 - SHOULD: [soft requirements]
 - AVOID: [anti-patterns for this domain]
@@ -207,6 +219,7 @@ Analyze domain-specific requirements:
 ```
 
 **Focus areas:**
+
 - Industry requirements (FinTech regulations, web scalability, etc.)
 - Performance constraints
 - Safety and correctness requirements
@@ -221,11 +234,11 @@ Combine all three layers:
 
 ### Layer Results Summary
 
-| Layer | Key Finding | Confidence |
-|-------|-------------|------------|
-| L1 (Mechanics) | [Summary] | [Level] |
-| L2 (Design) | [Summary] | [Level] |
-| L3 (Domain) | [Summary] | [Level] |
+| Layer          | Key Finding | Confidence |
+| -------------- | ----------- | ---------- |
+| L1 (Mechanics) | [Summary]   | [Level]    |
+| L2 (Design)    | [Summary]   | [Level]    |
+| L3 (Domain)    | [Summary]   | [Level]    |
 
 ### Cross-Layer Reasoning
 
@@ -240,6 +253,7 @@ Combine all three layers:
 **Solution:** [Domain-correct architectural solution]
 
 **Rationale:**
+
 - Domain requires: [L3 constraint]
 - Design pattern: [L2 pattern]
 - Mechanism: [L1 implementation]
@@ -264,16 +278,19 @@ Both modes produce the same output format:
 ---
 
 ## Layer 1: Language Mechanics
+
 [L1 analysis result]
 
 ---
 
 ## Layer 2: Design Choices
+
 [L2 analysis result]
 
 ---
 
 ## Layer 3: Domain Constraints
+
 [L3 analysis result]
 
 ---
@@ -282,12 +299,14 @@ Both modes produce the same output format:
 
 ### Reasoning Chain
 ```
+
 L3 Domain: [Constraint]
-    ↓ implies
+↓ implies
 L2 Design: [Pattern]
-    ↓ implemented via
+↓ implemented via
 L1 Mechanism: [Feature]
-```
+
+````
 
 ### Final Recommendation
 
@@ -298,11 +317,12 @@ L1 Mechanism: [Feature]
 **Code Pattern:**
 ```rust
 // Recommended implementation
-```
+````
 
 ---
 
-*Analysis performed by meta-cognition-parallel v0.2.0 (experimental)*
+_Analysis performed by meta-cognition-parallel v0.2.0 (experimental)_
+
 ```
 
 ---
@@ -311,21 +331,27 @@ L1 Mechanism: [Feature]
 
 ### Test 1: Trading System E0382
 ```
+
 /meta-parallel 交易系统报 E0382，trade record 被 move 了
+
 ```
 
 Expected: L3 identifies FinTech constraints → L2 suggests shared immutable → L1 recommends Arc<T>
 
 ### Test 2: Web API Concurrency
 ```
+
 /meta-parallel Web API 中多个 handler 需要共享数据库连接池
+
 ```
 
 Expected: L3 identifies Web constraints → L2 suggests connection pooling → L1 recommends Arc<Pool>
 
 ### Test 3: CLI Tool Config
 ```
+
 /meta-parallel CLI 工具如何处理配置文件和命令行参数的优先级
+
 ```
 
 Expected: L3 identifies CLI constraints → L2 suggests config precedence pattern → L1 recommends builder pattern
@@ -350,3 +376,4 @@ Expected: L3 identifies CLI constraints → L2 suggests config precedence patter
 ## Feedback
 
 This is experimental. Please report issues and suggestions to improve the three-layer analysis approach.
+```

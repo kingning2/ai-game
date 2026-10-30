@@ -45,14 +45,14 @@ serde = ["dep:serde", "shop-domain/serde"]
 With resolver 1, features are unified across every use of a dependency. Resolver 2 (default for edition
 2021, explicit `resolver = "2"` in virtual manifests) splits the union in three places:
 
-| Situation | Resolver 1 | Resolver 2 / 3 |
-|-----------|------------|----------------|
-| Same dep used as build-dependency (or by a proc-macro) and as a normal dependency | one feature set | host (build scripts, proc-macros) and target resolved separately; may compile twice |
-| Dev-dependency enables extra features | always unified into the normal build | only when building targets that need dev-deps (tests, examples, benches) |
-| `[target.'cfg(windows)'.dependencies]` features | unified even on Linux | only for the platform being built |
-| `--features` / `--no-default-features` in a workspace | applied in odd ways to the root package | applied to the selected packages; `-F crate/feat` syntax for others |
+| Situation                                                                         | Resolver 1                              | Resolver 2 / 3                                                                      |
+| --------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------- |
+| Same dep used as build-dependency (or by a proc-macro) and as a normal dependency | one feature set                         | host (build scripts, proc-macros) and target resolved separately; may compile twice |
+| Dev-dependency enables extra features                                             | always unified into the normal build    | only when building targets that need dev-deps (tests, examples, benches)            |
+| `[target.'cfg(windows)'.dependencies]` features                                   | unified even on Linux                   | only for the platform being built                                                   |
+| `--features` / `--no-default-features` in a workspace                             | applied in odd ways to the root package | applied to the selected packages; `-F crate/feat` syntax for others                 |
 
-Resolver 3 keeps resolver 2's feature behaviour and adds MSRV-aware *version* selection; it does not change
+Resolver 3 keeps resolver 2's feature behaviour and adds MSRV-aware _version_ selection; it does not change
 feature unification.
 
 Consequence of the dev-dependency rule: `cargo build` and `cargo test` can compile a dependency with different
@@ -63,7 +63,7 @@ That is the price of not leaking test-only features into release builds.
 
 1. **Features are additive.** Enabling a feature may add items or capabilities; it must never remove an API,
    change a type's layout used by other crates, or change behaviour another crate relies on. Because of
-   unification, *some other crate* can always turn your feature on.
+   unification, _some other crate_ can always turn your feature on.
 2. **No negative features.** `no_std`, `disable-tls`, `without-x` break when two crates disagree. Invert them:
    `std` (default), `tls`, `x`.
 3. **Small defaults for libraries.** Defaults are hard to turn off downstream (every dependent must write
@@ -92,8 +92,8 @@ tokio = { workspace = true, optional = true }
 
 [features]
 default = ["std"]
-std = ["serde?/std"]              # weak: only if serde is already enabled; does not enable serde
-serde = ["dep:serde"]             # explicit feature name for the optional dep
+std = ["serde?/std"] # weak: only if serde is already enabled; does not enable serde
+serde = ["dep:serde"] # explicit feature name for the optional dep
 json = ["serde", "dep:serde_json"]
 runtime = ["dep:tokio", "tokio?/rt-multi-thread"]
 ```
@@ -104,7 +104,7 @@ runtime = ["dep:tokio", "tokio?/rt-multi-thread"]
 - `pkg?/feat` (weak dependency feature) enables `feat` on `pkg` only if `pkg` is enabled by something else.
   Without the `?`, `std = ["serde/std"]` would turn serde on whenever `std` is on.
 - Manifests using `dep:` or `?/` need Cargo 1.60+; declare `rust-version` accordingly (CW020 checks it).
-- `#[cfg(feature = "serde")]` in code refers to *feature names*, not dependency names. Since 1.80 rustc checks
+- `#[cfg(feature = "serde")]` in code refers to _feature names_, not dependency names. Since 1.80 rustc checks
   cfg names and values (`unexpected_cfgs`), so a misspelled `#[cfg(feature = "serd")]` warns instead of
   silently compiling the item out.
 
@@ -146,16 +146,16 @@ Pitfalls:
 
 ## Unification pitfalls
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
+| Symptom                                                                                                  | Cause                                                                            | Fix                                                                                   |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `cargo build --workspace` passes, `cargo build -p shop-app` fails with "unresolved import" / "no method" | shop-app uses a dependency feature it never requested; another member enabled it | add the feature in shop-app's manifest; `cargo hack check --each-feature` per package |
-| `cargo test` passes, `cargo build --release` fails | feature only enabled by a dev-dependency | add it to the normal dependency |
-| Dependency rebuilds every time you alternate between two commands | different feature sets (or RUSTFLAGS) per command | build with consistent selections, workspace-hack crate, separate IDE target dir |
-| Binary larger / slower to compile than expected | some crate enabled heavy defaults (e.g. `full`) | `cargo tree -e features -i <dep>`; disable defaults at root |
-| Two copies of a crate in `cargo tree -d` | different major versions requested | align versions via `[workspace.dependencies]`; `cargo update -p dep@old` |
-| `links` conflict ("only one package in the dependency graph may specify the same links value") | two versions of a `-sys` crate | unify the version of the wrapper crates that pull them in |
-| Proc-macro dependency compiled twice | host vs target feature split (resolver 2) | expected; keep proc-macro deps' features minimal |
-| Feature-gated code in a library is never compiled in CI | CI only builds `--workspace` with default features | `--all-features` job and `cargo hack --each-feature` job |
+| `cargo test` passes, `cargo build --release` fails                                                       | feature only enabled by a dev-dependency                                         | add it to the normal dependency                                                       |
+| Dependency rebuilds every time you alternate between two commands                                        | different feature sets (or RUSTFLAGS) per command                                | build with consistent selections, workspace-hack crate, separate IDE target dir       |
+| Binary larger / slower to compile than expected                                                          | some crate enabled heavy defaults (e.g. `full`)                                  | `cargo tree -e features -i <dep>`; disable defaults at root                           |
+| Two copies of a crate in `cargo tree -d`                                                                 | different major versions requested                                               | align versions via `[workspace.dependencies]`; `cargo update -p dep@old`              |
+| `links` conflict ("only one package in the dependency graph may specify the same links value")           | two versions of a `-sys` crate                                                   | unify the version of the wrapper crates that pull them in                             |
+| Proc-macro dependency compiled twice                                                                     | host vs target feature split (resolver 2)                                        | expected; keep proc-macro deps' features minimal                                      |
+| Feature-gated code in a library is never compiled in CI                                                  | CI only builds `--workspace` with default features                               | `--all-features` job and `cargo hack --each-feature` job                              |
 
 ## Inspecting features
 

@@ -31,6 +31,7 @@ Measure the scenario that hurts: clean CI build, incremental build after editing
 `cargo test` link time. They have different fixes.
 
 Additional tools:
+
 - `cargo llvm-lines -p crate` (cargo-llvm-lines): which functions generate the most LLVM IR (monomorphisation
   bloat).
 - `cargo bloat --release --crates` (cargo-bloat): binary size per crate.
@@ -42,16 +43,16 @@ Additional tools:
 The HTML report shows each crate as a bar on a timeline, coloured by phase (front-end/metadata vs codegen),
 plus a concurrency graph of how many units ran in parallel.
 
-| Pattern in the report | Meaning | Fix |
-|----------------------|---------|-----|
-| One long bar with nothing else running | a crate on the critical path that everything waits for | split it, move dependents off it, or shrink it |
-| Long tail where one leaf crate (often the binary) builds alone at the end | the top crate is huge | move code into libraries below it that build in parallel |
-| Many short bars but low concurrency early | a deep chain of dependencies (A -> B -> C -> D) | flatten: make crates depend on the bottom directly, not through each other |
-| Proc-macro crates (`syn`, `serde_derive`) early and long | macro infrastructure blocks everything | fewer macro crates, smaller `syn` feature sets, `[profile.dev.build-override] opt-level` |
-| Build script (`build-script-build`) runs long | native compilation (cc, cmake), bindgen | prebuilt/system library, cache, move codegen to xtask |
-| Codegen phase dominates | lots of monomorphised generic code or `opt-level` high in dev | see codegen bloat; lower dev opt-level of own crates |
+| Pattern in the report                                                     | Meaning                                                       | Fix                                                                                      |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| One long bar with nothing else running                                    | a crate on the critical path that everything waits for        | split it, move dependents off it, or shrink it                                           |
+| Long tail where one leaf crate (often the binary) builds alone at the end | the top crate is huge                                         | move code into libraries below it that build in parallel                                 |
+| Many short bars but low concurrency early                                 | a deep chain of dependencies (A -> B -> C -> D)               | flatten: make crates depend on the bottom directly, not through each other               |
+| Proc-macro crates (`syn`, `serde_derive`) early and long                  | macro infrastructure blocks everything                        | fewer macro crates, smaller `syn` feature sets, `[profile.dev.build-override] opt-level` |
+| Build script (`build-script-build`) runs long                             | native compilation (cc, cmake), bindgen                       | prebuilt/system library, cache, move codegen to xtask                                    |
+| Codegen phase dominates                                                   | lots of monomorphised generic code or `opt-level` high in dev | see codegen bloat; lower dev opt-level of own crates                                     |
 
-Pipelining: a crate can start compiling as soon as its dependencies' *metadata* is ready, before their codegen
+Pipelining: a crate can start compiling as soon as its dependencies' _metadata_ is ready, before their codegen
 finishes. A dependent therefore waits on the dependency's front-end time, not its full time; this is why
 splitting a crate whose front-end (type checking) is slow pays off most.
 
@@ -91,19 +92,19 @@ splitting a crate whose front-end (type checking) is slow pays off most.
 ```toml
 # root Cargo.toml
 [profile.dev]
-debug = "line-tables-only"      # 1.71+: much less debuginfo to generate and link; backtraces keep line numbers
+debug = "line-tables-only" # 1.71+: much less debuginfo to generate and link; backtraces keep line numbers
 
 [profile.dev.package."*"]
-opt-level = 2                   # dependencies are compiled once and cached: make them fast at runtime
+opt-level = 2 # dependencies are compiled once and cached: make them fast at runtime
 
 [profile.dev.build-override]
-opt-level = 3                   # build scripts and proc-macros (incl. their deps) execute faster
+opt-level = 3 # build scripts and proc-macros (incl. their deps) execute faster
 
 [profile.release]
 lto = "thin"
-codegen-units = 1               # release speed; costs build time, so not for dev
+codegen-units = 1 # release speed; costs build time, so not for dev
 
-[profile.ci]                    # cargo build --profile ci: optimised enough for tests, faster than release
+[profile.ci] # cargo build --profile ci: optimised enough for tests, faster than release
 inherits = "dev"
 debug = false
 incremental = false
@@ -121,12 +122,12 @@ incremental = false
 
 Linking is serial per binary and dominates incremental builds of large binaries and test suites.
 
-| Platform | Option |
-|----------|--------|
-| x86_64 Linux | Rust 1.90+ uses `rust-lld` by default on `x86_64-unknown-linux-gnu`; before that, or for even faster links, use mold |
-| Linux (any) | mold: `linker = "clang"`, `rustflags = ["-C", "link-arg=-fuse-ld=mold"]` under `[target.<triple>]` |
-| macOS | the default Apple linker (ld-prime, Xcode 15+) is already fast; `split-debuginfo = "unpacked"` is the macOS dev default |
-| Windows MSVC | `rust-lld`: `linker = "rust-lld.exe"` under `[target.x86_64-pc-windows-msvc]` |
+| Platform     | Option                                                                                                                  |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| x86_64 Linux | Rust 1.90+ uses `rust-lld` by default on `x86_64-unknown-linux-gnu`; before that, or for even faster links, use mold    |
+| Linux (any)  | mold: `linker = "clang"`, `rustflags = ["-C", "link-arg=-fuse-ld=mold"]` under `[target.<triple>]`                      |
+| macOS        | the default Apple linker (ld-prime, Xcode 15+) is already fast; `split-debuginfo = "unpacked"` is the macOS dev default |
+| Windows MSVC | `rust-lld`: `linker = "rust-lld.exe"` under `[target.x86_64-pc-windows-msvc]`                                           |
 
 Put linker choices in `.cargo/config.toml` only if every developer and CI image has the linker installed;
 otherwise in `$CARGO_HOME/config.toml` per machine. Fewer, larger test binaries also mean fewer link steps.
@@ -153,15 +154,15 @@ pub fn read_config<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<String
 
 ## Avoiding needless rebuilds
 
-| Cause | Symptom | Fix |
-|-------|---------|-----|
-| Different feature sets between commands (`-p` vs `--workspace`, build vs test) | dependencies recompile when switching | consistent selections, workspace-hack crate |
-| `RUSTFLAGS` differ between terminal, IDE and scripts | everything rebuilds | same flags everywhere; separate `target-dir` for the IDE |
-| rust-analyzer and terminal share `target/` with different settings | they invalidate each other, lock contention | rust-analyzer `cargo.targetDir = true` (uses a subdirectory) |
-| Build script without `rerun-if-changed` | crate rebuilds whenever any file in the package changes | emit precise `cargo::rerun-if-changed=` / `rerun-if-env-changed=` |
-| Build script that touches files or embeds timestamps | rebuilds every time | deterministic outputs, write only when content changes |
-| `env!("GIT_HASH")` via build.rs in a low crate | every commit rebuilds the world | put version info in the top binary crate only |
-| Editing a crate at the bottom of the graph | everything above rebuilds | expected; move volatile code up |
+| Cause                                                                          | Symptom                                                 | Fix                                                               |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------- |
+| Different feature sets between commands (`-p` vs `--workspace`, build vs test) | dependencies recompile when switching                   | consistent selections, workspace-hack crate                       |
+| `RUSTFLAGS` differ between terminal, IDE and scripts                           | everything rebuilds                                     | same flags everywhere; separate `target-dir` for the IDE          |
+| rust-analyzer and terminal share `target/` with different settings             | they invalidate each other, lock contention             | rust-analyzer `cargo.targetDir = true` (uses a subdirectory)      |
+| Build script without `rerun-if-changed`                                        | crate rebuilds whenever any file in the package changes | emit precise `cargo::rerun-if-changed=` / `rerun-if-env-changed=` |
+| Build script that touches files or embeds timestamps                           | rebuilds every time                                     | deterministic outputs, write only when content changes            |
+| `env!("GIT_HASH")` via build.rs in a low crate                                 | every commit rebuilds the world                         | put version info in the top binary crate only                     |
+| Editing a crate at the bottom of the graph                                     | everything above rebuilds                               | expected; move volatile code up                                   |
 
 ## CI build speed
 

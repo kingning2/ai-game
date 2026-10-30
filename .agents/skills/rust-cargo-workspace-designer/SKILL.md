@@ -4,7 +4,7 @@ description: "Design, review and fix Cargo workspaces: when to split a crate (co
 metadata:
   category: programming
   subcategory: rust
-  version: "1.0.0"
+  version: '1.0.0'
 ---
 
 # Rust Cargo Workspace Designer
@@ -19,6 +19,7 @@ layer.
 ## Trigger Conditions
 
 Activate this skill when the user:
+
 - Starts a multi-crate Rust project, converts a single crate into a workspace, or asks "how should I split
   this into crates?", "monorepo layout", "virtual manifest or root package?"
 - Edits a root `Cargo.toml` with `[workspace]`, `[workspace.package]`, `[workspace.dependencies]`,
@@ -50,16 +51,16 @@ Activate this skill when the user:
 
 ## When to Split a Crate
 
-| Reason to split | Why it pays | Reason NOT to split |
-|-----------------|-------------|---------------------|
+| Reason to split                                                  | Why it pays                                                                    | Reason NOT to split                                                                   |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | Compile time: a big crate where every edit recompiles everything | crates compile in parallel; an edit only rebuilds the crate and its dependents | the "split" crates all depend on each other (no parallelism, more link/metadata work) |
-| Isolate heavy dependencies (DB drivers, gRPC, GUI, ML) | crates that do not need them stop rebuilding when they change | the dependency is needed everywhere anyway |
-| Proc-macros | **mandatory**: `proc-macro = true` crates can only export macros | - |
-| Enforce an architectural boundary (domain must not see HTTP/SQL) | the compiler enforces it; `pub(crate)` stays private | a single module with `pub(crate)` enforces it well enough |
-| Publish part of the code (SDK, client, macros) | independent semver, smaller download | internal-only code with no second consumer |
-| Several binaries share code | `apps/*` binaries over shared `crates/*` | one binary: modules are enough |
-| Isolate a `build.rs` / `links` / FFI `-sys` crate | build script reruns only rebuild that crate | - |
-| Different platforms or `no_std` core | the core builds for embedded/wasm without std deps | - |
+| Isolate heavy dependencies (DB drivers, gRPC, GUI, ML)           | crates that do not need them stop rebuilding when they change                  | the dependency is needed everywhere anyway                                            |
+| Proc-macros                                                      | **mandatory**: `proc-macro = true` crates can only export macros               | -                                                                                     |
+| Enforce an architectural boundary (domain must not see HTTP/SQL) | the compiler enforces it; `pub(crate)` stays private                           | a single module with `pub(crate)` enforces it well enough                             |
+| Publish part of the code (SDK, client, macros)                   | independent semver, smaller download                                           | internal-only code with no second consumer                                            |
+| Several binaries share code                                      | `apps/*` binaries over shared `crates/*`                                       | one binary: modules are enough                                                        |
+| Isolate a `build.rs` / `links` / FFI `-sys` crate                | build script reruns only rebuild that crate                                    | -                                                                                     |
+| Different platforms or `no_std` core                             | the core builds for embedded/wasm without std deps                             | -                                                                                     |
 
 Costs of splitting: more manifests, orphan-rule friction (`impl ForeignTrait for ForeignType` is forbidden, so
 trait impls must live next to the type or the trait), non-generic functions are not inlined across crates
@@ -68,12 +69,12 @@ a module to a crate when one of the reasons above is real. Detail: [crate-bounda
 
 ## Layouts
 
-| Layout | Use when | Shape |
-|--------|----------|-------|
-| Flat `crates/*` virtual manifest | libraries + a few bins, the default for most projects | `Cargo.toml` (no `[package]`), `crates/<name>/` |
-| `apps/` + `crates/` (or `libs/`) | several deployables share libraries | `apps/server`, `apps/cli`, `crates/domain`, `crates/infra` |
-| Root package + members | one main crate with helpers (`foo`, `foo-macros`, `foo-derive`) | `[package]` and `[workspace]` in root `Cargo.toml` |
-| Separate workspaces / `exclude` | fuzz targets, examples with conflicting deps, embedded firmware | `exclude = ["fuzz"]`, own `Cargo.toml` + lockfile |
+| Layout                           | Use when                                                        | Shape                                                      |
+| -------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
+| Flat `crates/*` virtual manifest | libraries + a few bins, the default for most projects           | `Cargo.toml` (no `[package]`), `crates/<name>/`            |
+| `apps/` + `crates/` (or `libs/`) | several deployables share libraries                             | `apps/server`, `apps/cli`, `crates/domain`, `crates/infra` |
+| Root package + members           | one main crate with helpers (`foo`, `foo-macros`, `foo-derive`) | `[package]` and `[workspace]` in root `Cargo.toml`         |
+| Separate workspaces / `exclude`  | fuzz targets, examples with conflicting deps, embedded firmware | `exclude = ["fuzz"]`, own `Cargo.toml` + lockfile          |
 
 ```
 shop/
@@ -96,9 +97,9 @@ crate with the project name: crates.io has one global namespace and `use shop_do
 ```toml
 [workspace]
 members = ["crates/*", "apps/*", "xtask"]
-default-members = ["apps/shop-server"]      # what plain `cargo build` / `cargo run` at the root builds
+default-members = ["apps/shop-server"] # what plain `cargo build` / `cargo run` at the root builds
 exclude = ["fuzz"]
-resolver = "3"                              # required in a virtual manifest; "2" if MSRV < 1.84
+resolver = "3" # required in a virtual manifest; "2" if MSRV < 1.84
 
 [workspace.package]
 version = "0.3.0"
@@ -108,22 +109,22 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/acme/shop"
 
 [workspace.dependencies]
-shop-domain = { path = "crates/shop-domain", version = "0.3.0" }   # path + version: publishable
-serde = { version = "1.0.200", default-features = false }           # defaults off; members opt in
+shop-domain = { path = "crates/shop-domain", version = "0.3.0" } # path + version: publishable
+serde = { version = "1.0.200", default-features = false } # defaults off; members opt in
 tokio = { version = "1.38", default-features = false }
 thiserror = "2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
 [workspace.lints.clippy]
-all = { level = "warn", priority = -1 }     # groups need a lower priority than single lints
+all = { level = "warn", priority = -1 } # groups need a lower priority than single lints
 unwrap_used = "warn"
 
 [profile.release]
 lto = "thin"
 codegen-units = 1
 [profile.dev.package."*"]
-opt-level = 2                               # fast dependencies, debuggable own code
+opt-level = 2 # fast dependencies, debuggable own code
 ```
 
 ## Member Manifest
@@ -139,7 +140,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-shop-domain = { workspace = true, features = ["serde"] }   # features are ADDED to the workspace entry
+shop-domain = { workspace = true, features = ["serde"] } # features are ADDED to the workspace entry
 tokio = { workspace = true, features = ["rt-multi-thread", "fs"] }
 
 [lints]
@@ -183,8 +184,8 @@ features (unless tests/examples are built) and other-platform dependencies out o
 ```toml
 [features]
 default = ["std"]
-std = ["serde?/std"]          # weak: enables serde/std only if serde is already on
-serde = ["dep:serde"]         # namespaced: no implicit "serde" feature is created
+std = ["serde?/std"] # weak: enables serde/std only if serde is already on
+serde = ["dep:serde"] # namespaced: no implicit "serde" feature is created
 [dependencies]
 serde = { workspace = true, optional = true, features = ["derive"] }
 ```
@@ -194,40 +195,41 @@ Pitfalls, `cargo tree -e features -i`, workspace-hack crates: [features-and-unif
 
 ## Symptom -> Cause -> Fix
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `profiles for the non root package will be ignored` | `[profile]` in a member (CW002) | move to root Cargo.toml |
-| `virtual workspace defaulting to resolver = "1"` | no `resolver` in virtual manifest (CW001) | `resolver = "2"` / `"3"` |
-| `cyclic package dependency` | two crates depend on each other (CW011) | move shared items down a layer; invert with a trait |
-| `current package believes it's in a workspace when it's not` | crate under the root not in `members` (CW010) | add to `members` or `exclude` |
-| `failed to load manifest for workspace member` | stale member path / glob (CW009) | fix `members`, delete the empty dir |
-| `cargo publish`: dependency does not specify a version | path dep without `version` (CW007) | `{ path = "...", version = "x.y" }` or `publish = false` |
-| `default-features is ignored for serde` | member disables defaults the workspace enables (CW016) | `default-features = false` at the root |
-| Same crate twice in `cargo tree -d` | members pin incompatible majors (CW003) | `[workspace.dependencies]`; `cargo update -p` |
-| Builds alone fail, `--workspace` passes | feature unification hides a missing feature | declare the feature in that crate; `cargo hack --each-feature` |
-| Everything rebuilds when switching `-p` / IDE vs CLI | different feature sets or `RUSTFLAGS` per invocation | unify features (workspace-hack), same flags, separate `target-dir` for the IDE |
-| One edit rebuilds the whole tree | edited crate is at the bottom of the graph or one giant crate | split the hot crate, move volatile code up the graph |
-| `lto`, `opt-level` in member have no effect | profile in member (CW002) | root profile, `[profile.release.package.foo]` for per-crate overrides |
-| Old toolchain: `feature edition2024 is required` | MSRV lower than manifest needs (CW020) | raise `rust-version` or drop the feature |
-| CI passes locally, fails with `--locked` | Cargo.lock not committed / out of date | commit it; `cargo update` deliberately in a PR |
+| Symptom                                                      | Cause                                                         | Fix                                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `profiles for the non root package will be ignored`          | `[profile]` in a member (CW002)                               | move to root Cargo.toml                                                        |
+| `virtual workspace defaulting to resolver = "1"`             | no `resolver` in virtual manifest (CW001)                     | `resolver = "2"` / `"3"`                                                       |
+| `cyclic package dependency`                                  | two crates depend on each other (CW011)                       | move shared items down a layer; invert with a trait                            |
+| `current package believes it's in a workspace when it's not` | crate under the root not in `members` (CW010)                 | add to `members` or `exclude`                                                  |
+| `failed to load manifest for workspace member`               | stale member path / glob (CW009)                              | fix `members`, delete the empty dir                                            |
+| `cargo publish`: dependency does not specify a version       | path dep without `version` (CW007)                            | `{ path = "...", version = "x.y" }` or `publish = false`                       |
+| `default-features is ignored for serde`                      | member disables defaults the workspace enables (CW016)        | `default-features = false` at the root                                         |
+| Same crate twice in `cargo tree -d`                          | members pin incompatible majors (CW003)                       | `[workspace.dependencies]`; `cargo update -p`                                  |
+| Builds alone fail, `--workspace` passes                      | feature unification hides a missing feature                   | declare the feature in that crate; `cargo hack --each-feature`                 |
+| Everything rebuilds when switching `-p` / IDE vs CLI         | different feature sets or `RUSTFLAGS` per invocation          | unify features (workspace-hack), same flags, separate `target-dir` for the IDE |
+| One edit rebuilds the whole tree                             | edited crate is at the bottom of the graph or one giant crate | split the hot crate, move volatile code up the graph                           |
+| `lto`, `opt-level` in member have no effect                  | profile in member (CW002)                                     | root profile, `[profile.release.package.foo]` for per-crate overrides          |
+| Old toolchain: `feature edition2024 is required`             | MSRV lower than manifest needs (CW020)                        | raise `rust-version` or drop the feature                                       |
+| CI passes locally, fails with `--locked`                     | Cargo.lock not committed / out of date                        | commit it; `cargo update` deliberately in a PR                                 |
 
 ## Version Notes
 
-| Rust | Cargo change that matters for workspaces |
-|------|------------------------------------------|
-| 1.51 | `resolver = "2"` |
-| 1.56 | edition 2021 (implies resolver 2), `rust-version` |
-| 1.60 | `dep:` namespaced and `?/` weak features; `cargo build --timings` |
-| 1.64 | workspace inheritance: `[workspace.package]`, `[workspace.dependencies]` |
-| 1.74 | `[lints]` / `[workspace.lints]` |
+| Rust | Cargo change that matters for workspaces                                                       |
+| ---- | ---------------------------------------------------------------------------------------------- |
+| 1.51 | `resolver = "2"`                                                                               |
+| 1.56 | edition 2021 (implies resolver 2), `rust-version`                                              |
+| 1.60 | `dep:` namespaced and `?/` weak features; `cargo build --timings`                              |
+| 1.64 | workspace inheritance: `[workspace.package]`, `[workspace.dependencies]`                       |
+| 1.74 | `[lints]` / `[workspace.lints]`                                                                |
 | 1.84 | `resolver = "3"`: MSRV-aware dependency resolution (`incompatible-rust-versions = "fallback"`) |
-| 1.85 | edition 2024 (implies resolver 3; underscore keys and `[project]` rejected) |
+| 1.85 | edition 2024 (implies resolver 3; underscore keys and `[project]` rejected)                    |
 
 Full history: [version-history.md](references/version-history.md).
 
 ## Output Format
 
 When designing or reviewing a workspace, answer with:
+
 1. **Graph** - crates by layer (from `crate_graph`), proposed moves/splits/merges and why.
 2. **Findings** - rule id, file:line, what breaks and when (now, on publish, on a fresh lockfile).
 3. **Manifests** - complete root `Cargo.toml` and one representative member, not fragments.
@@ -241,12 +243,12 @@ Small, standard-library-only Rust programs: they read TOML and never run cargo. 
 `rustc -O --edition 2021 scripts/<name>.rs -o /tmp/<name>`. Input is a workspace directory, any Cargo.toml in
 it (the whole workspace is checked), or `-` for one manifest on stdin (no file-system checks).
 
-| Script | Rules | Job |
-|--------|-------|-----|
-| `scripts/crate_graph.rs` | CW009-CW011, CW018 | crates by layer, internal edges (`--dot`, `--json`), cycles, missing/stray/invalid default members |
-| `scripts/manifest_lint.rs` | CW001, CW002, CW004-CW006, CW008, CW012, CW017, CW019, CW020 | manifest contents: resolver, root-only sections, inheritance, edition, MSRV, publishability, lints, deprecated keys |
-| `scripts/dep_audit.rs` | CW003, CW007, CW013-CW016 | dependency declarations: duplicates, unversioned path/git deps, `*`, unpinned git, undefined inheritance, ignored default-features |
-| `scripts/toml.rs`, `scripts/workspace.rs`, `scripts/cli.rs` | - | shared modules: TOML reader with line numbers, Cargo-style member discovery, options and report |
+| Script                                                      | Rules                                                        | Job                                                                                                                                |
+| ----------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/crate_graph.rs`                                    | CW009-CW011, CW018                                           | crates by layer, internal edges (`--dot`, `--json`), cycles, missing/stray/invalid default members                                 |
+| `scripts/manifest_lint.rs`                                  | CW001, CW002, CW004-CW006, CW008, CW012, CW017, CW019, CW020 | manifest contents: resolver, root-only sections, inheritance, edition, MSRV, publishability, lints, deprecated keys                |
+| `scripts/dep_audit.rs`                                      | CW003, CW007, CW013-CW016                                    | dependency declarations: duplicates, unversioned path/git deps, `*`, unpinned git, undefined inheritance, ignored default-features |
+| `scripts/toml.rs`, `scripts/workspace.rs`, `scripts/cli.rs` | -                                                            | shared modules: TOML reader with line numbers, Cargo-style member discovery, options and report                                    |
 
 ```bash
 /tmp/crate_graph .                                  # layered graph + membership findings
@@ -260,28 +262,28 @@ cat Cargo.toml | /tmp/manifest_lint -               # one manifest from stdin
 /tmp/dep_audit --list-rules                         # each script lists its rules with why and fix
 ```
 
-| Rule | Name | Severity |
-|------|------|----------|
-| CW001 | resolver-missing (virtual manifest, or root package on edition < 2021) | high |
-| CW002 | root-only-section-in-member (`[profile]`, `[patch]`, `[replace]`) | high |
-| CW003 | duplicated-dependency (not using `[workspace.dependencies]`) | medium |
-| CW004 | package-field-not-inherited (`[workspace.package]` key neither inherited nor set) | low |
-| CW005 | inconsistent-edition | medium |
-| CW006 | missing-rust-version | low |
-| CW007 | unversioned-path-dependency (path/git dep without version in a publishable crate) | high |
-| CW008 | publish-not-set (no description/license yet no `publish = false`) | low |
-| CW009 | member-missing (path without Cargo.toml, glob matching nothing) | high |
-| CW010 | crate-not-in-workspace | medium |
-| CW011 | dependency-cycle (normal/build edges) | high |
-| CW012 | lints-not-inherited | medium |
-| CW013 | wildcard-version (`"*"`) | high |
-| CW014 | git-dependency-unpinned (no `rev`/`tag`) | medium |
-| CW015 | inherit-undefined (`x.workspace = true` with nothing to inherit) | high |
-| CW016 | default-features-ignored | medium |
-| CW017 | deprecated-underscore-key (`dev_dependencies`, `default_features`, `[project]`) | medium |
-| CW018 | default-member-invalid | high |
-| CW019 | virtual-manifest-section (`[dependencies]`, `[features]` in a virtual manifest) | high |
-| CW020 | msrv-below-manifest-feature (edition 2024 < 1.85, resolver 3 < 1.84, `[lints]` < 1.74...) | medium |
+| Rule  | Name                                                                                      | Severity |
+| ----- | ----------------------------------------------------------------------------------------- | -------- |
+| CW001 | resolver-missing (virtual manifest, or root package on edition < 2021)                    | high     |
+| CW002 | root-only-section-in-member (`[profile]`, `[patch]`, `[replace]`)                         | high     |
+| CW003 | duplicated-dependency (not using `[workspace.dependencies]`)                              | medium   |
+| CW004 | package-field-not-inherited (`[workspace.package]` key neither inherited nor set)         | low      |
+| CW005 | inconsistent-edition                                                                      | medium   |
+| CW006 | missing-rust-version                                                                      | low      |
+| CW007 | unversioned-path-dependency (path/git dep without version in a publishable crate)         | high     |
+| CW008 | publish-not-set (no description/license yet no `publish = false`)                         | low      |
+| CW009 | member-missing (path without Cargo.toml, glob matching nothing)                           | high     |
+| CW010 | crate-not-in-workspace                                                                    | medium   |
+| CW011 | dependency-cycle (normal/build edges)                                                     | high     |
+| CW012 | lints-not-inherited                                                                       | medium   |
+| CW013 | wildcard-version (`"*"`)                                                                  | high     |
+| CW014 | git-dependency-unpinned (no `rev`/`tag`)                                                  | medium   |
+| CW015 | inherit-undefined (`x.workspace = true` with nothing to inherit)                          | high     |
+| CW016 | default-features-ignored                                                                  | medium   |
+| CW017 | deprecated-underscore-key (`dev_dependencies`, `default_features`, `[project]`)           | medium   |
+| CW018 | default-member-invalid                                                                    | high     |
+| CW019 | virtual-manifest-section (`[dependencies]`, `[features]` in a virtual manifest)           | high     |
+| CW020 | msrv-below-manifest-feature (edition 2024 < 1.85, resolver 3 < 1.84, `[lints]` < 1.74...) | medium   |
 
 Members are found like Cargo does: `members` globs minus `exclude`, plus path dependencies of a root package
 (implicit members); nested workspaces, hidden directories and `target/` are skipped. Exit codes: 0 clean (or
@@ -291,12 +293,12 @@ and skipped.
 
 ## Additional Resources
 
-| File | Content |
-|------|---------|
-| [crate-boundaries-and-layouts.md](references/crate-boundaries-and-layouts.md) | When to split/merge, layouts, naming, layering, proc-macro and -sys crates, xtask, build.rs, tests/benches/examples |
-| [manifest-and-inheritance.md](references/manifest-and-inheritance.md) | Every `[workspace]` key, inheritance rules, workspace deps, lints, profiles, `.cargo/config.toml` |
-| [features-and-unification.md](references/features-and-unification.md) | Additive feature design, `dep:`/`?/`, resolver 2/3 rules, unification pitfalls, cargo-hack, workspace-hack |
-| [publishing-msrv-and-lockfiles.md](references/publishing-msrv-and-lockfiles.md) | Internal path + version deps, publish order, release tools, semver-checks, Cargo.lock and MSRV policy |
-| [ci-and-tooling.md](references/ci-and-tooling.md) | GitHub Actions workflows, --locked, nextest, rust-cache, sccache, cargo-deny/machete/udeps/hack |
-| [build-performance.md](references/build-performance.md) | `cargo build --timings`, splitting hot crates, profiles, linkers, codegen bloat, CI cache strategy |
-| [version-history.md](references/version-history.md) | Cargo workspace/manifest features by Rust version, edition 2021/2024 changes |
+| File                                                                            | Content                                                                                                             |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| [crate-boundaries-and-layouts.md](references/crate-boundaries-and-layouts.md)   | When to split/merge, layouts, naming, layering, proc-macro and -sys crates, xtask, build.rs, tests/benches/examples |
+| [manifest-and-inheritance.md](references/manifest-and-inheritance.md)           | Every `[workspace]` key, inheritance rules, workspace deps, lints, profiles, `.cargo/config.toml`                   |
+| [features-and-unification.md](references/features-and-unification.md)           | Additive feature design, `dep:`/`?/`, resolver 2/3 rules, unification pitfalls, cargo-hack, workspace-hack          |
+| [publishing-msrv-and-lockfiles.md](references/publishing-msrv-and-lockfiles.md) | Internal path + version deps, publish order, release tools, semver-checks, Cargo.lock and MSRV policy               |
+| [ci-and-tooling.md](references/ci-and-tooling.md)                               | GitHub Actions workflows, --locked, nextest, rust-cache, sccache, cargo-deny/machete/udeps/hack                     |
+| [build-performance.md](references/build-performance.md)                         | `cargo build --timings`, splitting hot crates, profiles, linkers, codegen bloat, CI cache strategy                  |
+| [version-history.md](references/version-history.md)                             | Cargo workspace/manifest features by Rust version, edition 2021/2024 changes                                        |

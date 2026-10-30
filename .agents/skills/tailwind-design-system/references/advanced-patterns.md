@@ -236,7 +236,7 @@ Define reusable custom utilities:
 }
 
 /* Import with theme options */
-@import "tailwindcss" theme(static);
+@import 'tailwindcss' theme(static);
 ```
 
 ### Namespace Overrides
@@ -261,16 +261,8 @@ Define reusable custom utilities:
 @theme {
   /* Use color-mix() for alpha variants */
   --color-primary-50: color-mix(in oklab, var(--color-primary) 5%, transparent);
-  --color-primary-100: color-mix(
-    in oklab,
-    var(--color-primary) 10%,
-    transparent
-  );
-  --color-primary-200: color-mix(
-    in oklab,
-    var(--color-primary) 20%,
-    transparent
-  );
+  --color-primary-100: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  --color-primary-200: color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
 ```
 

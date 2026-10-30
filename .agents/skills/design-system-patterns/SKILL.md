@@ -60,32 +60,32 @@ const tokens = {
   colors: {
     // Primitive tokens
     gray: {
-      50: "#fafafa",
-      100: "#f5f5f5",
-      900: "#171717",
+      50: '#fafafa',
+      100: '#f5f5f5',
+      900: '#171717',
     },
     blue: {
-      500: "#3b82f6",
-      600: "#2563eb",
+      500: '#3b82f6',
+      600: '#2563eb',
     },
   },
   // Semantic tokens (reference primitives)
   semantic: {
     light: {
-      "text-primary": "var(--color-gray-900)",
-      "text-secondary": "var(--color-gray-600)",
-      "surface-default": "var(--color-white)",
-      "surface-elevated": "var(--color-gray-50)",
-      "border-default": "var(--color-gray-200)",
-      "interactive-primary": "var(--color-blue-500)",
+      'text-primary': 'var(--color-gray-900)',
+      'text-secondary': 'var(--color-gray-600)',
+      'surface-default': 'var(--color-white)',
+      'surface-elevated': 'var(--color-gray-50)',
+      'border-default': 'var(--color-gray-200)',
+      'interactive-primary': 'var(--color-blue-500)',
     },
     dark: {
-      "text-primary": "var(--color-gray-50)",
-      "text-secondary": "var(--color-gray-400)",
-      "surface-default": "var(--color-gray-900)",
-      "surface-elevated": "var(--color-gray-800)",
-      "border-default": "var(--color-gray-700)",
-      "interactive-primary": "var(--color-blue-400)",
+      'text-primary': 'var(--color-gray-50)',
+      'text-secondary': 'var(--color-gray-400)',
+      'surface-default': 'var(--color-gray-900)',
+      'surface-elevated': 'var(--color-gray-800)',
+      'border-default': 'var(--color-gray-700)',
+      'interactive-primary': 'var(--color-blue-400)',
     },
   },
 };

@@ -109,7 +109,7 @@ Detailed pattern documentation lives in `references/details.md`. Read that file 
 
 ```typescript
 // Before (legacy Redux)
-const ADD_TODO = "ADD_TODO";
+const ADD_TODO = 'ADD_TODO';
 const addTodo = (text) => ({ type: ADD_TODO, payload: text });
 function todosReducer(state = [], action) {
   switch (action.type) {
@@ -122,7 +122,7 @@ function todosReducer(state = [], action) {
 
 // After (Redux Toolkit)
 const todosSlice = createSlice({
-  name: "todos",
+  name: 'todos',
   initialState: [],
   reducers: {
     addTodo: (state, action: PayloadAction<string>) => {

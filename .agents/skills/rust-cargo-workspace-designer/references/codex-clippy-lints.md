@@ -49,6 +49,7 @@ unwrap_used = "deny"
 ```
 
 这批 lint 分三类语义：
+
 - **防蠢优化**：`redundant_clone`、`needless_collect`、`manual_memcpy`、`unnecessary_to_owned`
 - **防偷懒逃逸**：`unwrap_used`、`expect_used`（生产代码禁 panic，测试放行靠 clippy.toml）
 - **强制惯用写法**：`manual_*` 系列、`uninlined_format_args`、`needless_question_mark`
@@ -62,9 +63,9 @@ allow-unwrap-in-tests = true
 
 # 持锁跨 await 的类型拉黑（有 tokio 就保留这三行）
 await-holding-invalid-types = [
-    "tokio::sync::MutexGuard",
-    "tokio::sync::RwLockReadGuard",
-    "tokio::sync::RwLockWriteGuard",
+  "tokio::sync::MutexGuard",
+  "tokio::sync::RwLockReadGuard",
+  "tokio::sync::RwLockWriteGuard",
 ]
 
 # 项目级方法黑名单：按本项目需要追加，格式：

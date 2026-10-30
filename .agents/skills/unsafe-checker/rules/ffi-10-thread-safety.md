@@ -111,12 +111,12 @@ struct SingleThreadHandle {
 
 ## Synchronization Patterns
 
-| Pattern | Use Case |
-|---------|----------|
-| `AtomicT` | Simple counters, flags |
-| `Mutex<T>` | Complex shared state |
-| `RwLock<T>` | Read-heavy shared state |
-| `OnceLock<T>` | Lazy one-time init |
+| Pattern         | Use Case                     |
+| --------------- | ---------------------------- |
+| `AtomicT`       | Simple counters, flags       |
+| `Mutex<T>`      | Complex shared state         |
+| `RwLock<T>`     | Read-heavy shared state      |
+| `OnceLock<T>`   | Lazy one-time init           |
 | `thread_local!` | Per-thread state (document!) |
 
 ## Checklist

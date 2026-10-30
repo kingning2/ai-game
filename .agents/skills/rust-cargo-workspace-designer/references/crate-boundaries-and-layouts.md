@@ -1,7 +1,7 @@
 # Crate Boundaries and Workspace Layouts
 
 How to decide what becomes a crate, how to arrange crates on disk, how to name them, and how to keep the
-dependency graph layered. Everything here is about *structure*; manifest keys are in
+dependency graph layered. Everything here is about _structure_; manifest keys are in
 [manifest-and-inheritance.md](manifest-and-inheritance.md), build speed in [build-performance.md](build-performance.md).
 
 ## Contents
@@ -23,16 +23,16 @@ dependency graph layered. Everything here is about *structure*; manifest keys ar
 
 A crate is what `rustc` compiles in one invocation. That has consequences you cannot get around:
 
-| Property | Inside one crate | Across crates |
-|----------|------------------|---------------|
-| Parallelism | codegen is split into codegen units, but type checking and borrow checking are mostly serial | independent crates compile in parallel; a dependent can start once its dependencies' metadata is ready (pipelining) |
-| Incremental rebuild | incremental compilation reuses unchanged query results, but the crate is always re-analysed | an untouched crate is not recompiled at all, unless something it depends on changed |
-| Privacy | `pub(crate)`, `pub(super)` | only `pub` items are visible; the boundary is enforced by the compiler |
-| Inlining | anything can be inlined | non-generic functions are only inlined with `#[inline]` or LTO; generics are monomorphised in the caller crate |
-| Coherence | impls anywhere in the crate | orphan rule: `impl ForeignTrait for ForeignType` is forbidden |
-| Cycles | modules may reference each other freely | crates may not form a dependency cycle (normal/build edges) |
+| Property            | Inside one crate                                                                             | Across crates                                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Parallelism         | codegen is split into codegen units, but type checking and borrow checking are mostly serial | independent crates compile in parallel; a dependent can start once its dependencies' metadata is ready (pipelining) |
+| Incremental rebuild | incremental compilation reuses unchanged query results, but the crate is always re-analysed  | an untouched crate is not recompiled at all, unless something it depends on changed                                 |
+| Privacy             | `pub(crate)`, `pub(super)`                                                                   | only `pub` items are visible; the boundary is enforced by the compiler                                              |
+| Inlining            | anything can be inlined                                                                      | non-generic functions are only inlined with `#[inline]` or LTO; generics are monomorphised in the caller crate      |
+| Coherence           | impls anywhere in the crate                                                                  | orphan rule: `impl ForeignTrait for ForeignType` is forbidden                                                       |
+| Cycles              | modules may reference each other freely                                                      | crates may not form a dependency cycle (normal/build edges)                                                         |
 
-So a crate boundary is a performance tool *and* an API. Splitting along a line that the code crosses all the
+So a crate boundary is a performance tool _and_ an API. Splitting along a line that the code crosses all the
 time gives you neither speed nor clarity.
 
 ## Split or keep together
@@ -139,13 +139,13 @@ exclude = ["fuzz", "examples/standalone-app"]
 
 ## Virtual manifest vs root package
 
-| | Virtual manifest (no `[package]`) | Root package |
-|-|-----------------------------------|--------------|
-| `cargo build` at root | builds `default-members`, else all members | builds the root package only (unless `default-members`) |
-| Resolver | must be set explicitly (no edition to infer from) | inferred from the root package edition |
-| Feels like | a monorepo of equals | one main crate with helpers |
-| `src/` at root | none | the root crate's code |
-| Typical | services, tool suites, large libraries split into many crates | a library with `-derive`/`-macros`/`-core` companions |
+|                       | Virtual manifest (no `[package]`)                             | Root package                                            |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------- |
+| `cargo build` at root | builds `default-members`, else all members                    | builds the root package only (unless `default-members`) |
+| Resolver              | must be set explicitly (no edition to infer from)             | inferred from the root package edition                  |
+| Feels like            | a monorepo of equals                                          | one main crate with helpers                             |
+| `src/` at root        | none                                                          | the root crate's code                                   |
+| Typical               | services, tool suites, large libraries split into many crates | a library with `-derive`/`-macros`/`-core` companions   |
 
 A virtual manifest cannot have `[dependencies]`, `[features]`, `[lib]`, `[[bin]]` or `[lints]` (use
 `[workspace.lints]`): those belong to a package. `manifest_lint` flags them as CW019.
@@ -312,16 +312,16 @@ build it. Typical tasks: `codegen`, `dist` (build release artefacts), `ci` (the 
 
 ## Tests, benches and examples
 
-| Kind | Location | Notes |
-|------|----------|-------|
-| Unit tests | `#[cfg(test)] mod tests` inside `src/` | can test private items |
-| Integration tests | `crates/foo/tests/*.rs` | each file is a separate crate and binary: compile + link time per file |
-| Integration test suite (fast) | `crates/foo/tests/it/main.rs` + `mod` files | one binary for all tests; `[[test]] name = "it" path = "tests/it/main.rs"` (or rely on auto-discovery of `tests/it/main.rs`) |
-| Cross-crate / end-to-end tests | dedicated `crates/e2e` or `tests` crate, `publish = false` | depends on several crates; keeps heavy test deps out of libraries |
-| Shared fixtures | `crates/test-support`, used only in `[dev-dependencies]` | must not depend on crates that use it in their normal deps |
-| Benchmarks | `crates/foo/benches/*.rs` with `[[bench]] name = "x" harness = false` for Criterion/Divan | `cargo bench -p foo` |
-| Examples | `crates/foo/examples/*.rs` | built by `cargo test` and `--all-targets`; can use dev-dependencies |
-| Doc tests | `///` code blocks | `cargo test --doc`; cargo-nextest does not run them |
+| Kind                           | Location                                                                                  | Notes                                                                                                                        |
+| ------------------------------ | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Unit tests                     | `#[cfg(test)] mod tests` inside `src/`                                                    | can test private items                                                                                                       |
+| Integration tests              | `crates/foo/tests/*.rs`                                                                   | each file is a separate crate and binary: compile + link time per file                                                       |
+| Integration test suite (fast)  | `crates/foo/tests/it/main.rs` + `mod` files                                               | one binary for all tests; `[[test]] name = "it" path = "tests/it/main.rs"` (or rely on auto-discovery of `tests/it/main.rs`) |
+| Cross-crate / end-to-end tests | dedicated `crates/e2e` or `tests` crate, `publish = false`                                | depends on several crates; keeps heavy test deps out of libraries                                                            |
+| Shared fixtures                | `crates/test-support`, used only in `[dev-dependencies]`                                  | must not depend on crates that use it in their normal deps                                                                   |
+| Benchmarks                     | `crates/foo/benches/*.rs` with `[[bench]] name = "x" harness = false` for Criterion/Divan | `cargo bench -p foo`                                                                                                         |
+| Examples                       | `crates/foo/examples/*.rs`                                                                | built by `cargo test` and `--all-targets`; can use dev-dependencies                                                          |
+| Doc tests                      | `///` code blocks                                                                         | `cargo test --doc`; cargo-nextest does not run them                                                                          |
 
 Each `tests/*.rs` file links its own binary; 40 files in a crate that links tokio and sqlx can spend more time
 linking than testing. Consolidating into one `tests/it/` binary is one of the cheapest build-time wins.

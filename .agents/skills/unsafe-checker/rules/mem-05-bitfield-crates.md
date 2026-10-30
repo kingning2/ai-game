@@ -126,13 +126,13 @@ fn use_bitvec() {
 
 ## Recommended Crates
 
-| Crate | Use Case | Features |
-|-------|----------|----------|
-| `bitflags` | Flag sets (like C enums) | Type-safe, const, derives |
-| `modular-bitfield` | Packed struct fields | Proc macro, repr(C) |
-| `bitvec` | Arbitrary bit arrays | Slicing, iteration |
-| `packed_struct` | Binary protocol structs | Endianness, derive |
-| `deku` | Binary parsing | Derive, read/write |
+| Crate              | Use Case                 | Features                  |
+| ------------------ | ------------------------ | ------------------------- |
+| `bitflags`         | Flag sets (like C enums) | Type-safe, const, derives |
+| `modular-bitfield` | Packed struct fields     | Proc macro, repr(C)       |
+| `bitvec`           | Arbitrary bit arrays     | Slicing, iteration        |
+| `packed_struct`    | Binary protocol structs  | Endianness, derive        |
+| `deku`             | Binary parsing           | Derive, read/write        |
 
 ## Checklist
 
