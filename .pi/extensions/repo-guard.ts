@@ -12,7 +12,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ExtensionAPI, ToolCallEvent, ToolResultEvent } from '@earendil-works/pi-coding-agent';
+import type { ExtensionAPI, ToolCallEvent } from '@earendil-works/pi-coding-agent';
 
 const ALLOW_MARK = 'token-guard:allow';
 const RULE_MAX_CHARS = 6000;
@@ -31,8 +31,8 @@ function guardedKind(path: string): 'code' | 'style' | null {
   const p = path.replaceAll('\\', '/');
   if (p.includes('node_modules') || p.includes('tokens.css')) return null;
   if (!/(^|\/)(packages|apps)\//.test(p)) return null;
-  if (/\.tsx?$/.test(p)) return 'code';
-  if (/\.css$/.test(p)) return 'style';
+  if (p.endsWith('.ts') || p.endsWith('.tsx')) return 'code';
+  if (p.endsWith('.css')) return 'style';
   return null;
 }
 
@@ -98,7 +98,7 @@ export default function repoGuard(pi: ExtensionAPI) {
 
     // 按触达文件选规则：tsx → UI 双件套；css → ui-design；ts → coding-style；新建文件 → 另加 project-structure
     const rules: string[] = [];
-    if (kind === 'code' && /\.tsx$/.test(event.input.path)) {
+    if (kind === 'code' && event.input.path.endsWith('.tsx')) {
       rules.push('rules/web/ui-design.md', 'rules/web/component-guide.md');
     } else if (kind === 'style') {
       rules.push('rules/web/ui-design.md');

@@ -15,6 +15,7 @@
     "typecheck": "turbo run typecheck",
     "dev:win": "pnpm --filter @agent-packages/desktop tauri dev",
     "dev": "pnpm --filter @agent-packages/web dev",
+    "codegen": "cargo test -p server --manifest-path rust/Cargo.toml export_openapi && pnpm --filter @agent-packages/web codegen",
     "server": "cargo run -p server --manifest-path rust/Cargo.toml",
     "server:watch": "cd rust && watchexec -r -- cargo run -p server"
   },

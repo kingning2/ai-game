@@ -21,6 +21,20 @@
 | CSS class        | Tailwind 工具类 + 少量 kebab-case 自定义 | `grid-rows-[0fr]`                  |
 | 布尔 props       | `is/has/should` 或形容词                 | `searchable`、`pinned`、`selected` |
 
+## 分支写法（禁三元）
+
+- **禁止使用三元运算符** `cond ? a : b`。分支逻辑必须落到更显式的形式，可读性优先于行数。
+- 多分支取值：**查表优先**——用 `Record<枚举/字面量, 值>` 或 `Map` 把分支变成数据，新增分支不改控制流；
+  键用模块级 SCREAMING_SNAKE 常量对象（见命名规范）或联合字面量枚举。
+  ```ts
+  // ❌ kind === 'kill' ? '刀' : kind === 'guard' ? '盾' : '好'
+  // ✅
+  const SEAT_MARK: Record<SeatMarkKind, string> = { kill: '刀', guard: '盾', good: '好' };
+  ```
+- 双分支含副作用/计算：抽函数，内部 `if` + 提前 `return`；不写三元链。
+- 仅单侧需要渲染/执行：JSX 与语句均用 `cond && x`（或 `cond && undefined` 归一），空值回落用 `??`。
+- 工具链层面 oxlint 只拦嵌套三元（`no-nested-ternary`）；本条以规则约束 + code review 强制，新增代码不许出现任何三元。
+
 ## React 规范
 
 1. **受控优先**：数据由 props 进、变更由回调出；组件不持有数据副本。参考 `AgentCard`（`agent` + `onSelect`/`onRerun`）与 `WebSearch`（`queries[]` 纯渲染）。

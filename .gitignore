@@ -22,3 +22,4 @@ tmp/
 
 # 本地录屏调试产物
 recordings/
+voices_tmp.json

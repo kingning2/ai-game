@@ -132,6 +132,12 @@
       "sourceType": "github",
       "skillPath": ".agents/skills/ui-ux-pro-max/SKILL.md",
       "computedHash": "ea087c341bfb5b23195c7302027268ede86da802554c18a5c4896a6017b439f9"
+    },
+    "zhihu": {
+      "source": "developer-cdn.zhihu.com/zhihu-cli/releases/stable/skill/zhihu-cli-skill.zip",
+      "sourceType": "url",
+      "skillPath": "zhihu/SKILL.md",
+      "computedHash": "2c92060c9a5dea676afbcb84460832c497d4c66dacb62574313354313e43c8af"
     }
   }
 }

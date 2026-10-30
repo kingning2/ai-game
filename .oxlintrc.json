@@ -101,6 +101,8 @@
     "binaries/**",
     "tmp",
     "tmp/**",
-    ".git/**"
+    ".git/**",
+    // pi 扩展脚本：跑在宿主 runtime 里，类型来自宿主注入，不在本项目 tsconfig 范围内
+    ".pi/**"
   ]
 }
