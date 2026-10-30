@@ -28,6 +28,7 @@ werewolf.workspace = true
 memory.workspace = true
 tts.workspace = true
 db.workspace = true
+ffmpeg.workspace = true
 rusqlite.workspace = true
 
 [dev-dependencies]

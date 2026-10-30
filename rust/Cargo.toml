@@ -13,6 +13,7 @@ members = [
   "games/ecs",
   "games/runtime",
   "memory",
+  "ffmpeg",
   "db",
   "macros",
 ]
@@ -71,6 +72,7 @@ game-runtime = { path = "games/runtime", version = "0.1.0" }
 bevy_ecs = "=0.20.1"
 memory = { path = "memory" }
 tts = { path = "tts" }
+ffmpeg = { path = "ffmpeg" }
 db = { path = "db" }
 macros = { path = "macros" }
 

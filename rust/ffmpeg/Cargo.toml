@@ -1,0 +1,17 @@
+[package]
+name = "ffmpeg"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+description = "对局录制：webm 块流喂 ffmpeg 子进程 stdin（-c copy 零转码）落盘为 webm 文件"
+
+[dependencies]
+tokio = { workspace = true, features = ["process", "fs", "io-util", "time"] }
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+
+[lints]
+workspace = true
