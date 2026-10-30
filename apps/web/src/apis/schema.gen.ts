@@ -152,6 +152,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/game/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * GET /api/game/stream —— SSE 实时事件流（对局变化才推全量快照）。
+         * @description 帧体是裸 GameStatusDto（不包 ApiResponse 信封）；对局不可得发 `event: gone` 后关流；
+         *     终局（status=ended）推最后一帧后服务端关流，客户端无需重连。
+         *     推送间隔 400ms 对比快照签名（事件数 + 状态 + 阶段 + 天数），无变化不发帧；
+         *     同时承担事件流水增量落库（前端切到 SSE 后不再轮询，落库不能丢）。
+         */
+        get: operations["stream_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -431,6 +454,8 @@ export interface components {
                 roles: components["schemas"]["RoleStatusDto"][];
                 /** @description 座位 → 角色显示名（上帝视角；未开局为空） */
                 seat_roles: string[];
+                /** @description 座位 → Edge TTS 音色（观战语音播报；主持人音色前端固定；未分配为空） */
+                seat_voices: string[];
                 /** @description 座位 → 选手名（未开局为空） */
                 seats: string[];
                 /**
@@ -765,6 +790,8 @@ export interface components {
             roles: components["schemas"]["RoleStatusDto"][];
             /** @description 座位 → 角色显示名（上帝视角；未开局为空） */
             seat_roles: string[];
+            /** @description 座位 → Edge TTS 音色（观战语音播报；主持人音色前端固定；未分配为空） */
+            seat_voices: string[];
             /** @description 座位 → 选手名（未开局为空） */
             seats: string[];
             /**
@@ -1376,6 +1403,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_GameStatusDto"];
+                };
+            };
+        };
+    };
+    stream_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 房间码（优先于 game；按 db 该房间最近一局定位） */
+                room: string | null;
+                /** @description 对局 id（裸局为负数自增 id） */
+                game: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE 流：变化帧为裸 GameStatusDto；对局不可得发 event:gone */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
                 };
             };
         };

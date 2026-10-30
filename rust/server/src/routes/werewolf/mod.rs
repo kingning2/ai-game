@@ -5,6 +5,7 @@
 //! - `POST /api/game/resume`：暂停后继续
 //! - `POST /api/game/end`：直接结束（强制终局）
 //! - `GET  /api/game/status`：当前对局状态与局面总览
+//! - `GET  /api/game/stream`：SSE 实时事件流（变化才推全量快照；前端对局页订阅源）
 //! - `GET  /api/game/memory?player=N`：N 号视角的对局记忆（编排层抽取，供 LLM 决策 prompt）
 //! - `POST /api/game/memory/compact`：记忆过长时调 LLM 压缩老段为摘要
 //!   （划分 → LLM → 落回，结果跨请求存活；未超窗不调模型）
@@ -16,6 +17,7 @@ use crate::error::{ApiError, ApiResponse, ApiResult, AppError};
 use axum::{
     Json, Router,
     extract::{Query, State},
+    response::sse::{Event, KeepAlive, Sse},
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -708,7 +710,12 @@ pub async fn get_status(
     Query(query): Query<GameQuery>,
 ) -> ApiResult<Json<ApiResponse<GameStatusDto>>> {
     let game_id = locate_game(&state, &query)?;
-    // 槽内有该局：正常实时视图
+    Ok(ApiResponse::ok(build_status_dto(&state, game_id)?))
+}
+
+/// 组装一局的状态 DTO：槽内实时视图（含事件流 + MVP + 进度落库），
+/// 槽内无则从 db 组装 ended 降级结算（服务器重启后的历史局）
+fn build_status_dto(state: &AppState, game_id: i64) -> ApiResult<GameStatusDto> {
     if let Ok(view) = state.game.view(game_id) {
         let engine = state
             .game
@@ -721,17 +728,102 @@ pub async fn get_status(
         dto.mvp = match dto.ended_reason.as_deref() {
             Some("manual") => None,
             _ => mvp_dto(
-                &state,
+                state,
                 game_id,
                 dto.status == "running" || dto.winner.is_some(),
             ),
         };
-        // 事件流水增量落库（含对局结束写胜负；幂等，轮询驱动）
-        crate::routes::rooms::flush_progress(&state, game_id, &dto);
-        return Ok(ApiResponse::ok(dto));
+        // 事件流水增量落库（含对局结束写胜负；幂等，轮询/推送驱动）
+        crate::routes::rooms::flush_progress(state, game_id, &dto);
+        return Ok(dto);
     }
-    // 槽内无（服务器重启后的历史局）：从 db 组装 ended 降级结算
-    stale_status(&state, game_id)
+    stale_status(state, game_id)
+}
+
+/// GET /api/game/stream —— SSE 实时事件流（对局变化才推全量快照）。
+///
+/// 帧体是裸 GameStatusDto（不包 ApiResponse 信封）；对局不可得发 `event: gone` 后关流；
+/// 终局（status=ended）推最后一帧后服务端关流，客户端无需重连。
+/// 推送间隔 400ms 对比快照签名（事件数 + 状态 + 阶段 + 天数），无变化不发帧；
+/// 同时承担事件流水增量落库（前端切到 SSE 后不再轮询，落库不能丢）。
+#[utoipa::path(
+    get,
+    path = "/api/game/stream",
+    tag = "game",
+    params(GameQuery),
+    responses(
+        (status = 200, description = "SSE 流：变化帧为裸 GameStatusDto；对局不可得发 event:gone", content_type = "text/event-stream"),
+    ),
+)]
+pub async fn stream_status(
+    State(state): State<AppState>,
+    Query(query): Query<GameQuery>,
+) -> Sse<impl futures_util::Stream<Item = Result<Event, std::convert::Infallible>>> {
+    // 定位在握手时做一次；后续对局消失（被 end/清槽）在循环里发 gone
+    let located = locate_game(&state, &query).ok();
+    let stream = futures_util::stream::unfold(
+        StreamState {
+            state,
+            game_id: located,
+            last: None,
+            interval: tokio::time::interval(STREAM_POLL),
+            done: false,
+        },
+        |mut st| async move {
+            loop {
+                if st.done {
+                    return None; // gone / 终局帧已发，关流（客户端不重连）
+                }
+                st.interval.tick().await; // 首个 tick 立即完成，开局帧不等 400ms
+                let Some(game_id) = st.game_id else {
+                    st.done = true;
+                    return Some((Ok(Event::default().event("gone").data("{}")), st));
+                };
+                let Ok(dto) = build_status_dto(&st.state, game_id) else {
+                    // 定位失效 / 槽内无且 db 无 → 对局不可得
+                    st.done = true;
+                    return Some((Ok(Event::default().event("gone").data("{}")), st));
+                };
+                // 终局帧：推完即关流（客户端按 onFrame 的 ended 分支结束，不重连）
+                if dto.status == "ended" {
+                    st.done = true;
+                    let frame = serde_json::to_string(&dto).unwrap_or_default();
+                    return Some((Ok(Event::default().data(frame)), st));
+                }
+                // 变化检测：事件条数 + 状态 + 阶段 + 天数足够判变（事件只增不减；
+                // 无变化不发帧，空闲保活交给 KeepAlive）
+                let signature = (
+                    dto.events.len(),
+                    dto.status.clone(),
+                    dto.phase.clone(),
+                    dto.day,
+                    dto.alive_total,
+                );
+                if st.last.as_ref() == Some(&signature) {
+                    continue;
+                }
+                st.last = Some(signature);
+                let frame = serde_json::to_string(&dto).unwrap_or_default();
+                return Some((Ok(Event::default().data(frame)), st));
+            }
+        },
+    );
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+/// SSE 推送轮询间隔：autoplay 步进间隔（~2s）的零头，帧延迟感不明显
+const STREAM_POLL: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// 快照签名：事件条数 + 状态 + 阶段 + 天数 + 存活数
+pub type SnapshotSignature = (usize, String, String, u32, u8);
+
+/// SSE unfold 状态
+struct StreamState {
+    state: AppState,
+    game_id: Option<i64>,
+    last: Option<SnapshotSignature>,
+    interval: tokio::time::Interval,
+    done: bool,
 }
 
 /// 组装 status 的 `mvp` 字段（stale 降级局由调用方直接置 null）：
@@ -772,7 +864,7 @@ fn mvp_dto(state: &AppState, game_id: i64, has_mvp_flow: bool) -> Option<MvpDto>
 /// 服务器重启后的历史局降级：槽里已无该局，从 db 组装 ended 结算视图。
 /// 真实席位身份来自 room_roster，胜负来自 games.winner 列，中断标记与天数
 /// 来自 games.result JSON（清扫写入 {"stale":true,...}）。
-fn stale_status(state: &AppState, game_id: i64) -> ApiResult<Json<ApiResponse<GameStatusDto>>> {
+fn stale_status(state: &AppState, game_id: i64) -> ApiResult<GameStatusDto> {
     let game = crate::routes::rooms::db_query(state, |conn| db::game_result(conn, game_id))?
         .ok_or_else(|| AppError::NotFound("对局不存在或已失效".to_string()))?;
     let roster =
@@ -832,7 +924,7 @@ fn stale_status(state: &AppState, game_id: i64) -> ApiResult<Json<ApiResponse<Ga
             })
             .collect(),
     };
-    Ok(ApiResponse::ok(dto))
+    Ok(dto)
 }
 
 /// 选手名册（按座位序的默认名单）：来自 state 包的固定 12 人名单
@@ -1055,6 +1147,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/game/resume", post(resume_game))
         .route("/api/game/end", post(end_game))
         .route("/api/game/status", get(get_status))
+        .route("/api/game/stream", get(stream_status))
         .route("/api/game/memory", get(get_memory))
         .route("/api/game/memory/compact", post(compact_memory))
 }

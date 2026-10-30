@@ -4499,6 +4499,7 @@ dependencies = [
  "agent",
  "axum",
  "db",
+ "futures-util",
  "macros",
  "memory",
  "rusqlite",

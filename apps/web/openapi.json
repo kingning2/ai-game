@@ -371,6 +371,51 @@
         }
       }
     },
+    "/api/game/stream": {
+      "get": {
+        "tags": [
+          "game"
+        ],
+        "summary": "GET /api/game/stream —— SSE 实时事件流（对局变化才推全量快照）。",
+        "description": "帧体是裸 GameStatusDto（不包 ApiResponse 信封）；对局不可得发 `event: gone` 后关流；\n终局（status=ended）推最后一帧后服务端关流，客户端无需重连。\n推送间隔 400ms 对比快照签名（事件数 + 状态 + 阶段 + 天数），无变化不发帧；\n同时承担事件流水增量落库（前端切到 SSE 后不再轮询，落库不能丢）。",
+        "operationId": "stream_status",
+        "parameters": [
+          {
+            "name": "room",
+            "in": "path",
+            "description": "房间码（优先于 game；按 db 该房间最近一局定位）",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "game",
+            "in": "path",
+            "description": "对局 id（裸局为负数自增 id）",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE 流：变化帧为裸 GameStatusDto；对局不可得发 event:gone",
+            "content": {
+              "text/event-stream": {}
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
