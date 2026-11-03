@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@agent-packages/shared-ui';
-import { speak, startTtsSetup, stopSpeaking } from './speech';
+import { prefetch, speak, startTtsSetup, stopSpeaking } from './speech';
 
 /** 按中英标点切句（。！？!?…；;），保留标点；空段过滤 */
 function splitSentences(text: string): string[] {
@@ -11,17 +11,16 @@ function splitSentences(text: string): string[] {
 type QueueItem = { sentence: string; voice: string };
 
 /**
- * 底部电影字幕条：把当前念白按句切分逐句呈现（一句一句出现，不是整段）。
+ * 底部电影字幕条：只显示当前正在朗读的一句（整段全文由上方发言面板负责），
+ * 超长单行截断——观众视线跟字幕走，不重复信息。
  *
- * 传 `preamble` 时（如选手发言前的「3 号玩家请发言」），主持人音色先播报完
- * 再进入正文；正文按 `voice` 逐句朗读——语音播完才推下一句，字幕与语音同步；
- * 合成失败或未装模型时自动降级为按句长估算的定时推进。
+ * 语音按句逐句朗读，播完一句立刻推进下一句；开播时预取下一句音频，
+ * 消除句间合成等待。合成失败或未装模型时自动降级为按句长估算的定时推进。
  * 念白切换时打断旧播报、重置回第一句。
  */
 export function CaptionBar({
   text,
   voice,
-  preamble,
   segments,
   voices,
   onAllSpoken,
@@ -29,10 +28,8 @@ export function CaptionBar({
 }: {
   /** 当前念白全文（主持人词或选手发言）；`segments` 存在时忽略 */
   text: string;
-  /** 朗读音色：音色 id / `主持人` / 选手名；省略则纯字幕不发声 */
+  /** 朗读音色：音色 id / `主持人` / 选手名；省则纯字幕不发声 */
   voice?: string;
-  /** 正文前的主持报号（用主持人音色播完才进正文，如「一号玩家请发言」） */
-  preamble?: string;
   /** 多人多段台词（如夜晚狼聊）：按段序依次用各自的音色播报 */
   segments?: { voice: string; text: string }[];
   /** 选手名/「主持人」→ Edge 音色 id 映射；提供时走 Edge 引擎（发音更好听），
@@ -42,29 +39,26 @@ export function CaptionBar({
   onAllSpoken?: () => void;
   className?: string;
 }) {
-  const queue = useMemo<QueueItem[]>(() => {
-    const lead = (preamble ? splitSentences(preamble) : []).map((sentence) => ({
-      sentence,
-      voice: '主持人',
-    }));
-    const body = segments
-      ? segments.flatMap((seg) =>
-          splitSentences(seg.text).map((sentence) => ({ sentence, voice: seg.voice })),
-        )
-      : splitSentences(text).map((sentence) => ({ sentence, voice: voice ?? '' }));
-    return [...lead, ...body];
-  }, [text, voice, preamble, segments]);
+  const queue = useMemo<QueueItem[]>(
+    () =>
+      segments
+        ? segments.flatMap((seg) =>
+            splitSentences(seg.text).map((sentence) => ({ sentence, voice: seg.voice })),
+          )
+        : splitSentences(text).map((sentence) => ({ sentence, voice: voice ?? '' })),
+    [text, voice, segments],
+  );
   const [index, setIndex] = useState(0);
-  const [prevKey, setPrevKey] = useState(text + (preamble ?? ''));
+  const [prevKey, setPrevKey] = useState(text);
   /** 全部句子播完（含降级定时器路径）回调：驱动对局节拍器推进下一条事件 */
   const onAllSpokenRef = useRef(onAllSpoken);
   useEffect(() => {
     onAllSpokenRef.current = onAllSpoken;
   });
 
-  // 念白/报号切换：渲染期重置回第一句（adjusting-state-when-props-change 官方模式）
+  // 念白切换：渲染期重置回第一句（adjusting-state-when-props-change 官方模式）
   const segKey = segments?.map((s) => `${s.voice}:${s.text}`).join('|') ?? '';
-  const key = text + (preamble ?? '') + segKey;
+  const key = text + segKey;
   if (prevKey !== key) {
     setPrevKey(key);
     setIndex(0);
@@ -80,6 +74,13 @@ export function CaptionBar({
       // 多句队列播完（index 越界）：通知一次即可
       onAllSpokenRef.current?.();
       return undefined;
+    }
+    // 开播即预取下一句音频：播完当前句零等待接下一句
+    const next = queue[index + 1];
+    if (next !== undefined) {
+      const nextEdge = voices?.[next.voice];
+      if (nextEdge !== undefined) prefetch(nextEdge, next.sentence, 'edge');
+      else if (next.voice) prefetch(next.voice, next.sentence);
     }
     let cancelled = false;
     const finish = (): void => {
@@ -99,9 +100,7 @@ export function CaptionBar({
       speak(edgeVoice, item.sentence, 'edge').then(finish).catch(downgrade);
     } else {
       startTtsSetup(); // 幂等：未装模型时后台补装，已装立即返回
-      speak(item.voice, item.sentence)
-        .then(finish)
-        .catch(downgrade);
+      speak(item.voice, item.sentence).then(finish).catch(downgrade);
     }
     return () => {
       cancelled = true;
@@ -112,28 +111,19 @@ export function CaptionBar({
   }, [index, queue, voices]);
 
   if (queue.length === 0) return null;
-  const current = queue[Math.min(index, queue.length - 1)];
   return (
     <div
       className={cn(
-        'mx-auto max-w-2xl rounded-xl bg-arena/55 px-5 py-2.5 text-center backdrop-blur-sm',
+        'mx-auto max-w-2xl rounded-xl bg-arena/55 px-5 py-3 text-center backdrop-blur-sm',
         className,
       )}
     >
-      {current.voice === '主持人' && voice && voice !== '主持人' ? (
-        <p className="mb-0.5 text-xs font-semibold tracking-wider text-arena-gold/90">主持人报号</p>
-      ) : null}
       <p
         key={index}
-        className="animate-fade-in text-base leading-relaxed font-bold text-arena-text drop-shadow-md"
+        className="animate-fade-in truncate text-lg leading-relaxed font-medium text-arena-text"
       >
-        {current.sentence}
+        {queue[index]?.sentence}
       </p>
-      {queue.length > 1 ? (
-        <p className="mt-0.5 text-xs text-arena-muted">
-          {Math.min(index + 1, queue.length)} / {queue.length}
-        </p>
-      ) : null}
     </div>
   );
 }

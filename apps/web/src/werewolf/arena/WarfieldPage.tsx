@@ -5,113 +5,27 @@
  * /api/game/stream → WerewolfGame 基类去重/回放 → projectStage 投影到 WerewolfStage。
  * 介绍期未进本页的事件不丢：SSE 每帧都是全量快照，进入后按 seq 追平。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { projectStage } from '@agent-packages/game';
 import { HStack, VStack, WerewolfStage, type WerewolfPlayer } from '@agent-packages/shared-ui';
 import { CaptionBar } from '../CaptionBar';
-import { HostPanel } from './HostPanel';
-import { MOCK_HOST } from './mock';
 import { MvpPanel } from './MvpPanel';
 import { SpeechPanel } from './SpeechPanel';
 import { speak, stopSpeaking } from '../speech';
-import { buildPlayers, dealtFromServer, type BoardDef } from '../boards';
-import { SERVER_ERROR_CODE, type ServerFailure } from '../../apis/http';
+import { buildPlayers, dealtFromServer, dealGame, type BoardDef } from '../boards';
+import { ROLE_LABEL } from '../lobby/roles';
 import type { GameStatusDto } from '../../apis/types';
 import type { Player } from '../types';
 import { useGameStream } from './useGameStream';
+import {
+  CountdownOverlay,
+  NIGHTFALL_MS,
+  NightfallOverlay,
+  OpeningCeremony,
+  type CeremonyPlayer,
+} from '@agent-packages/animation';
+import { failureCopy, WaitingNotice, waitingTitle } from './failures';
 import { RecordButton, useRecorder } from './useRecorder';
-
-/** 等待页标题：故障文案 > 重连提示 > 冷启动连接（故障最具体，优先显示） */
-function waitingTitle(failureTitle: string | null, reconnecting: boolean): string {
-  if (failureTitle !== null) return failureTitle;
-  if (reconnecting) return '事件流中断，正在重连……';
-  return '正在连接 server，等待引擎发牌……';
-}
-
-/** 等待提示：`show` 为 false 时渲染 null —— 连接空窗期静默，避免等待文案一闪而过 */
-function WaitingNotice(props: { show: boolean; title: string; hint?: string; onBack?: () => void }) {
-  const { show, title, hint, onBack } = props;
-  if (!show) return null;
-  return (
-    <VStack gap={3} className="items-center text-center">
-      <p className="text-lg font-bold text-arena-text">{title}</p>
-      {hint !== undefined && <p className="max-w-md text-sm text-arena-muted">{hint}</p>}
-      {onBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-full bg-arena-raised px-4 py-2 text-sm font-medium text-arena-text hover:bg-arena-raised"
-        >
-          ← 返回大厅
-        </button>
-      )}
-    </VStack>
-  );
-}
-
-/**
- * server 故障 → 等待页/对局内错误条文案。按 apis/http 的 ServerFailure 逐分支给具体提示，
- * 码值与 rust/server/src/error/app_error.rs 的 AppError 一一对应，禁止透传原始错误字符串。
- */
-function failureCopy(failure: ServerFailure): { title: string; hint?: string } {
-  switch (failure.kind) {
-    case 'network':
-      return {
-        title: '无法连接 server',
-        hint: '请先启动后端：仓库根目录执行 pnpm server（或 rust/ 下 cargo run -p server）。',
-      };
-    case 'http':
-      // Vite 代理连不上后端时回 502（空响应体，statusText 才是 Bad Gateway）
-      return failure.status === 502
-        ? {
-            title: 'server 没有应答',
-            hint: '请求已到达代理但 server 无响应，通常是 server 未启动或正在重启编译。',
-          }
-        : { title: `server 响应异常（HTTP ${failure.status}）` };
-    case 'abort':
-      return { title: 'server 请求超时', hint: 'server 可能正忙，将自动重试。' };
-    case 'parse':
-      return {
-        title: 'server 响应格式异常',
-        hint: '返回内容不是约定的数据包裹，请确认 server 与前端版本一致。',
-      };
-    case 'business':
-      return businessFailureCopy(failure.code, failure.message);
-    case 'unknown':
-      return { title: failure.message || '未知错误' };
-  }
-  // switch 已覆盖 ServerFailure 全部分支，此处仅为 lint consistent-return 兜底
-  return { title: '未知错误' };
-}
-
-/** 业务码分支：只枚举对局页实际会发生的服务端错误，其余回落服务端原文 */
-function businessFailureCopy(code: number, message: string): { title: string; hint?: string } {
-  switch (code) {
-    case SERVER_ERROR_CODE.notFound:
-      return { title: '没有进行中的对局', hint: '对局尚未创建或已结束，请回到大厅重新开局。' };
-    case SERVER_ERROR_CODE.conflict:
-      return { title: '对局状态冲突', hint: message };
-    case SERVER_ERROR_CODE.badRequest:
-    case SERVER_ERROR_CODE.unprocessable:
-      return { title: '开局请求参数有误', hint: message };
-    case SERVER_ERROR_CODE.tooManyRequests:
-      return { title: '请求过于频繁', hint: '请稍等片刻再操作。' };
-    case SERVER_ERROR_CODE.timeout:
-      return { title: 'server 处理超时', hint: '稍后将自动重试。' };
-    case SERVER_ERROR_CODE.internal:
-      return {
-        title: 'server 内部错误',
-        hint: '详情见 server 日志；若涉及模型调用，请检查选手模型与 API Key 配置。',
-      };
-    case SERVER_ERROR_CODE.serviceUnavailable:
-      return {
-        title: '模型服务暂不可用',
-        hint: '上游模型无响应或返回错误，请检查网络与选手模型配置。',
-      };
-    default:
-      return { title: message };
-  }
-}
 
 /** 领域 Player → 舞台座位：夜晚非睁眼者深度压暗，睁眼/发言全彩，死亡态置灰 */
 function toStagePlayer(
@@ -141,24 +55,29 @@ const ROLE_GOOD_LABEL: Record<Exclude<Player['role'], 'werewolf'>, string> = {
   villager: '平民',
 };
 
-/** 开局倒计时浮层：5-4-3-2-1 逐秒过场（stage 就绪前在等待页展示，倒数完才开演） */
-function CountdownOverlay({ value, waiting }: { value: number; waiting: boolean }) {
-  return (
-    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-6 bg-arena/70 backdrop-blur-sm">
-      <p className="animate-fade-in text-lg font-medium text-arena-muted">
-        对局即将开始，请各位选手就位
-      </p>
-      <p
-        key={value}
-        className="animate-zoom-in text-8xl font-black tracking-wider text-arena-text drop-shadow-[0_4px_24px_rgb(0_0_0/0.6)]"
-      >
-        {value > 0 ? value : '开始！'}
-      </p>
-      <p className="animate-fade-in text-sm text-arena-muted">
-        {waiting ? '选手正在入场，主持人整理牌局中……' : '主持人即将入场 · 天黑请闭眼……'}
-      </p>
-    </div>
-  );
+/** 角色 → 身份牌文案/色调（仪式亮牌用，与舞台 RoleBadge 同源） */
+const CEREMONY_ROLE: Record<Player['role'], { label: string; tone: CeremonyPlayer['roleTone'] }> = {
+  werewolf: { label: ROLE_LABEL.werewolf, tone: 'wolf' },
+  seer: { label: ROLE_GOOD_LABEL.seer, tone: 'good' },
+  witch: { label: ROLE_GOOD_LABEL.witch, tone: 'good' },
+  guard: { label: ROLE_GOOD_LABEL.guard, tone: 'good' },
+  hunter: { label: ROLE_GOOD_LABEL.hunter, tone: 'good' },
+  villager: { label: ROLE_GOOD_LABEL.villager, tone: 'good' },
+};
+
+function toCeremonyPlayer(p: Player): CeremonyPlayer {
+  const role = CEREMONY_ROLE[p.role];
+  return {
+    seat: p.id,
+    name: p.name,
+    avatarSrc: p.avatarSrc,
+    roleLabel: role.label,
+    roleTone: role.tone,
+  };
+}
+
+function toCeremonyRoster(p: Player) {
+  return { seat: p.id, name: p.name, avatarSrc: p.avatarSrc };
 }
 
 /**
@@ -211,10 +130,35 @@ export function WarfieldPage({
     return dealtFromServer(board, live.seats, live.seat_roles ?? [], roomCode).players;
   }, [board, live, players, roomCode]);
 
-  // 新开局：请求基类开演（事件就绪后自动 5-4-3-2-1 倒计时）；观战回放由「开始回放」按钮点火
+  // 新开局：先演发牌仪式（洗牌→发牌→亮牌→转暗），仪式收场才请求基类开演
+  //（倒计时在暗屏上出数字，结束后 NightfallOverlay 由暗到亮）；观战回放立即点火
+  const [ceremonyDone, setCeremonyDone] = useState(false);
   useEffect(() => {
-    if (!spectate) game.begin();
-  }, [game, spectate]);
+    if (spectate || ceremonyDone) game.begin();
+  }, [game, spectate, ceremonyDone]);
+
+  // 仪式发牌数据：server seat_roles 事实源（SSE 全量快照自带）；server 不可达回退本地随机，
+  // 未就绪（预热中）传 null——仪式只演入座静场，不发牌
+  const ceremonyPlayers = useMemo<CeremonyPlayer[] | null>(() => {
+    if (spectate || ceremonyDone) return null;
+    const seatsReady =
+      live?.seats?.length === board.total && (live.seat_roles?.length ?? 0) === board.total;
+    if (seatsReady && live) {
+      return dealtFromServer(board, live.seats, live.seat_roles ?? [], roomCode).players.map(
+        toCeremonyPlayer,
+      );
+    }
+    if (failure !== null) {
+      return dealGame(
+        board,
+        players.map(({ name, avatarSrc }) => ({ name, avatarSrc: avatarSrc ?? '' })),
+      ).players.map(toCeremonyPlayer);
+    }
+    return null;
+  }, [spectate, ceremonyDone, live, board, roomCode, failure, players]);
+
+  // GSAP 时间线结束回调；useCallback 保引用稳定，避免 useGSAP 依赖变化重启动画
+  const finishCeremony = useCallback(() => setCeremonyDone(true), []);
 
   // 回放进度全部来自基类快照：events 已按 seq 去重增量累积，playhead 由基类节拍器逐条推进
   // （倒计时 / 缓冲等待 / 回放点火也都在基类内，web 只消费快照与调用控制方法）
@@ -240,6 +184,28 @@ export function WarfieldPage({
     return () => window.clearTimeout(timer);
   }, [failure, phase, dealPending]);
 
+  // 天黑过场：倒计时归零（→ null）触发狼嚎 + 黑幕渐隐揭示舞台；观战/回放无倒计时不触发。
+  // 狼嚎来源：美国 Fish & Wildlife Service 录音（美国政府作品，公共领域），已截段淡入淡出
+  const [nightfall, setNightfall] = useState(false);
+  const prevCountdown = useRef(snapshot.countdown);
+  useEffect(() => {
+    const was = prevCountdown.current;
+    prevCountdown.current = snapshot.countdown;
+    if (was === null || snapshot.countdown !== null) return undefined;
+    setNightfall(true);
+    const howl = new Audio('/werewolf/wolf-howl.mp3');
+    howl.volume = 0.6;
+    void howl.play().catch(() => undefined); // 自动播放策略拦截时静默降级
+    const timer = window.setTimeout(() => setNightfall(false), NIGHTFALL_MS); // 兜底：GSAP 时间线结束会提前回调 finishNightfall
+    return () => {
+      window.clearTimeout(timer);
+      howl.pause(); // 提前离页就收声
+    };
+  }, [snapshot.countdown]);
+
+  // GSAP 时间线结束回调；useCallback 保引用稳定，避免 useGSAP 依赖变化重启动画
+  const finishNightfall = useCallback(() => setNightfall(false), []);
+
   // 结算：server finish_game 后 winner 出现 → 展示结算浮层 + 主持人宣判语音
   const winner = live?.winner ?? null;
   useEffect(() => {
@@ -260,12 +226,34 @@ export function WarfieldPage({
     if (winner && recorder.recording) recorder.stop();
   }, [winner, recorder]);
 
+  // 开局仪式：规则讲完直进对局页，舞台先入座（无身份），真实发牌就绪后开演
+  if (!spectate && !ceremonyDone) {
+    return (
+      <div className="relative h-dvh overflow-hidden bg-arena">
+        <OpeningCeremony
+          roster={players.map(toCeremonyRoster)}
+          players={ceremonyPlayers}
+          onComplete={finishCeremony}
+          backgroundUrl="/werewolf/night-bg.jpg"
+        />
+        {/* 仪式期间 server 故障：静场底部就地提示（发牌回退本地随机已兜底演出） */}
+        {failureView && (
+          <div className="absolute inset-x-0 bottom-6 z-40 flex justify-center">
+            <WaitingNotice show title={failureView.title} hint={failureView.hint} onBack={onBack} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // 等待态：未连上事件流（倒计时 / 观战回放封面 / 错误）
   if (!stage) {
     return (
       <div className="relative flex h-dvh items-center justify-center overflow-hidden bg-arena">
         {countdown !== null ? (
           <CountdownOverlay value={countdown} waiting={totalEvents === 0} />
+        ) : nightfall ? (
+          <NightfallOverlay onDone={finishNightfall} />
         ) : spectate && totalEvents > 0 && !replayStarted ? (
           <VStack
             gap={4}
@@ -341,8 +329,7 @@ export function WarfieldPage({
           backgroundUrl="/werewolf/night-bg.jpg"
           fullBleed
         >
-          <VStack gap={3} justify="center" className="h-full w-full">
-            <HostPanel host={MOCK_HOST} message={stage.hostMessage} className="w-full max-w-xl" />
+          <VStack gap={4} justify="between" className="h-full w-full py-2">
             {stage.wolfChat.length > 0 ? (
               // 狼人内部交流：同晚商议段并排同屏展示，不播语音（CaptionBar 只走主持人词）
               <HStack gap={3} className="w-full max-w-2xl items-stretch justify-center">
@@ -366,12 +353,7 @@ export function WarfieldPage({
               voice={stage.speaker?.name ?? '主持人'}
               text={stage.speechText ?? stage.hostMessage}
               voices={voiceMap}
-              preamble={
-                stage.speechText && stage.speaker
-                  ? `有请 ${stage.speaker.id} 号玩家，${stage.speaker.name}，请发言。`
-                  : undefined
-              }
-              // 狼聊：主持人「狼人请睁眼」后，依次用各狼人自己的音色播商议内容
+              // 狼聊：依次用各狼人自己的音色播商议内容
               segments={
                 stage.wolfChat.length > 0
                   ? stage.wolfChat.map(({ player, text: t }) => ({ voice: player.name, text: t }))
@@ -388,6 +370,8 @@ export function WarfieldPage({
           </VStack>
         </WerewolfStage>
       </div>
+      {/* 天黑过场：叠在舞台上方，黑幕渐隐揭示选手（倒计时结束的短暂黑屏期） */}
+      {nightfall ? <NightfallOverlay onDone={finishNightfall} /> : null}
       {/* 结算浮层：胜负 + 全场身份回顾（server finish_game 已落库）；回放未追平时不抢跑 */}
       {winner && caughtUp ? (
         <div className="animate-fade-in absolute inset-0 z-20 flex items-center justify-center bg-arena/80 backdrop-blur-md">

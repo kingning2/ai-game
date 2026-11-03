@@ -38,6 +38,37 @@ export function startTtsSetup(): void {
 let queue: Promise<void> = Promise.resolve();
 let current: HTMLAudioElement | null = null;
 
+/** 合成结果缓存：同句同音色不重复请求，预取下一句时消除句间合成等待 */
+const synthCache = new Map<string, Promise<Blob>>();
+
+function synthesize(voice: string, text: string, engine?: TtsEngine): Promise<Blob> {
+  // ponytail: 缓存无淘汰策略，单局百句级直接复用；超阈值整体清空即可
+  if (synthCache.size > 200) synthCache.clear();
+  const key = `${engine ?? 'local'}|${voice}|${text}`;
+  let blob = synthCache.get(key);
+  if (blob === undefined) {
+    blob = (async (): Promise<Blob> => {
+      const response = await fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(engine ? { voice, text, engine } : { voice, text }),
+      });
+      if (!response.ok) throw new Error(`TTS 合成失败（HTTP ${response.status}）`);
+      return response.blob();
+    })().catch((err: unknown) => {
+      synthCache.delete(key); // 失败不缓存，下次重试
+      throw err;
+    });
+    synthCache.set(key, blob);
+  }
+  return blob;
+}
+
+/** 预取一句音频（当前句开播时调用，播到下一句时零等待） */
+export function prefetch(voice: string, text: string, engine?: TtsEngine): void {
+  void synthesize(voice, text, engine).catch(() => undefined);
+}
+
 /** 停止当前播放并清空队列（关开关 / 页面卸载时用） */
 export function stopSpeaking(): void {
   current?.pause();
@@ -54,13 +85,7 @@ export function stopSpeaking(): void {
  */
 export function speak(voice: string, text: string, engine?: TtsEngine): Promise<void> {
   const play = async (): Promise<void> => {
-    const response = await fetch('/api/tts/speak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(engine ? { voice, text, engine } : { voice, text }),
-    });
-    if (!response.ok) throw new Error(`TTS 合成失败（HTTP ${response.status}）`);
-    const blob = await response.blob();
+    const blob = await synthesize(voice, text, engine);
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     current = audio;

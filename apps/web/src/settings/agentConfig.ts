@@ -1,7 +1,4 @@
-import type {
-  AgentSettingsDraft,
-  AgentSettingsValue,
-} from '@agent-packages/shared-ui';
+import type { AgentSettingsDraft, AgentSettingsValue } from '@agent-packages/shared-ui';
 import { fetchAgentConfigDto, putAgentConfig } from '../apis/settings';
 import type { AgentConfigDto, AgentConfigUpdate, SettingsPatchDto } from '../apis/types';
 

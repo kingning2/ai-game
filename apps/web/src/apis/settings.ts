@@ -3,12 +3,7 @@
  * 一函数一端点，返回已解包的业务数据（http 自带 ApiResponse 信封解包）；DTO 契约见 ./types.ts。
  */
 import { http } from './http';
-import type {
-  AgentConfigDto,
-  AgentConfigUpdate,
-  PlayerOverrideDto,
-  RosterPlayer,
-} from './types';
+import type { AgentConfigDto, AgentConfigUpdate, PlayerOverrideDto, RosterPlayer } from './types';
 
 /** 读取全局 agent 配置（GET /api/agent/config） */
 export const fetchAgentConfigDto = () => http.get<AgentConfigDto>('/agent/config');

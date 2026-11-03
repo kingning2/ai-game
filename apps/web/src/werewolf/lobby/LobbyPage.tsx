@@ -180,10 +180,13 @@ export function LobbyPage() {
                     <button
                       type="button"
                       onClick={() => {
-                    void navigate('/werewolf/play', {
-                      state: { boardId: boardFromServer(room.board_id).id, roomCode: room.code },
-                    });
-                  }}
+                        void navigate('/werewolf/play', {
+                          state: {
+                            boardId: boardFromServer(room.board_id).id,
+                            roomCode: room.code,
+                          },
+                        });
+                      }}
                       className="ml-auto shrink-0 rounded-full bg-arena-gold/20 px-4 py-1.5 text-xs font-bold text-arena shadow-card transition-colors hover:bg-arena-gold"
                     >
                       观战
@@ -231,10 +234,13 @@ export function LobbyPage() {
                       <button
                         type="button"
                         onClick={() => {
-                    void navigate('/werewolf/play', {
-                      state: { boardId: boardFromServer(room.board_id).id, roomCode: room.code },
-                    });
-                  }}
+                          void navigate('/werewolf/play', {
+                            state: {
+                              boardId: boardFromServer(room.board_id).id,
+                              roomCode: room.code,
+                            },
+                          });
+                        }}
                         className="ml-auto shrink-0 rounded-full border border-arena-line px-4 py-1.5 text-xs font-bold text-arena-muted transition-colors hover:border-arena-line hover:text-arena-text"
                       >
                         查看结果

@@ -7,7 +7,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router';
-import type { BoardDef, DealtGame } from './werewolf/boards';
+import type { BoardDef } from './werewolf/boards';
 import { BOARDS } from './werewolf/boards';
 import type { Player } from './werewolf/types';
 import { AppLayout } from './layout/AppLayout';
@@ -29,9 +29,9 @@ function SetupRoute() {
   return (
     <RoomSetup
       board={board}
-      onComplete={(dealt: DealtGame) => {
+      onComplete={(roomCode, roster) => {
         void navigate('/werewolf/play', {
-          state: { boardId: board.id, roomCode: dealt.roomCode, players: dealt.players },
+          state: { boardId: board.id, roomCode, players: roster },
         });
       }}
     />
