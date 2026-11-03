@@ -71,9 +71,18 @@
     "typescript/unbound-method": "warn",
     // React Compiler（oxc Rust 版）无法编译的语法：compiler 会静默跳过该组件，
     // 用 lint 提示出来，避免 memoization 静默失效
-    "react/unsupported-syntax": "warn"
+    "react/unsupported-syntax": "warn",
+    // 文件行数上限：超限优先拆子组件，state 过多用 useReducer 聚合（见 AGENTS.md）
+    "max-lines": ["error", { "max": 400, "skipComments": true, "skipBlankLines": true }]
   },
   "overrides": [
+    {
+      // 生成文件：openapi-ts 产物不受行数约束
+      "files": ["**/schema.gen.ts"],
+      "rules": {
+        "max-lines": "off"
+      }
+    },
     {
       // 无类型的 JS 脚本：no-unsafe-* 在没有类型信息的 .js/.mjs 上全是噪声
       "files": ["**/*.{js,mjs,cjs}"],
