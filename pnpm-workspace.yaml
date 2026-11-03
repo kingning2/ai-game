@@ -17,5 +17,7 @@ catalog:
   oxc-transform-react: ^0.155.0
   tailwindcss: ^4.3.3
   '@tailwindcss/vite': ^4.3.3
+  gsap: ^3.15.0
+  '@gsap/react': ^2.1.2
   tsdown: ^0.23.1
   openapi-typescript: ^7.13.0

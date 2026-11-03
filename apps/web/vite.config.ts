@@ -24,6 +24,10 @@ export default defineConfig(() => ({
         find: /^@agent-packages\/game$/,
         replacement: resolve(import.meta.dirname, '../../packages/game/src/index.ts'),
       },
+      {
+        find: /^@agent-packages\/animation$/,
+        replacement: resolve(import.meta.dirname, '../../packages/animation/src/index.ts'),
+      },
     ],
   },
 

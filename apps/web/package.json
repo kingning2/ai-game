@@ -11,12 +11,15 @@
     "codegen": "openapi-typescript ./openapi.json -o ./src/apis/schema.gen.ts"
   },
   "dependencies": {
+    "@agent-packages/animation": "workspace:*",
     "@agent-packages/game": "workspace:*",
     "@agent-packages/shared": "workspace:*",
     "@agent-packages/shared-ui": "workspace:*",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/noto-sans-sc": "^5.3.1",
+    "@gsap/react": "catalog:",
+    "gsap": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "^8.5.1"
@@ -26,9 +29,9 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "openapi-typescript": "catalog:",
     "oxc-transform-react": "catalog:",
     "puppeteer": "^25.16.0",
-    "openapi-typescript": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"

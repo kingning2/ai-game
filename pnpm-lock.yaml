@@ -164,6 +164,9 @@ settings:
 
 catalogs:
   default:
+    '@gsap/react':
+      specifier: ^2.1.2
+      version: 2.1.2
     '@tailwindcss/vite':
       specifier: ^4.3.3
       version: 4.3.3
@@ -176,6 +179,9 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^6.1.2
       version: 6.1.2
+    gsap:
+      specifier: ^3.15.0
+      version: 3.15.0
     openapi-typescript:
       specifier: ^7.13.0
       version: 7.13.0
@@ -232,6 +238,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@agent-packages/animation':
+        specifier: workspace:*
+        version: link:../../packages/animation
       '@agent-packages/game':
         specifier: workspace:*
         version: link:../../packages/game
@@ -250,6 +259,12 @@ importers:
       '@fontsource-variable/noto-sans-sc':
         specifier: ^5.3.1
         version: 5.3.1
+      '@gsap/react':
+        specifier: 'catalog:'
+        version: 2.1.2(gsap@3.15.0)(react@19.3.1)
+      gsap:
+        specifier: 'catalog:'
+        version: 3.15.0
       react:
         specifier: 'catalog:'
         version: 19.3.1
@@ -290,6 +305,37 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.3.4(@types/node@26.6.5)(jiti@2.7.0)
+
+  packages/animation:
+    dependencies:
+      '@agent-packages/shared-ui':
+        specifier: workspace:^
+        version: link:../shared-ui
+      '@gsap/react':
+        specifier: 'catalog:'
+        version: 2.1.2(gsap@3.15.0)(react@19.3.1)
+      gsap:
+        specifier: 'catalog:'
+        version: 3.15.0
+    devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      react:
+        specifier: 'catalog:'
+        version: 19.3.1
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.3.1(react@19.3.1)
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.1(typescript@6.0.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
 
   packages/game:
     dependencies:
@@ -360,6 +406,12 @@ packages:
 
   '@fontsource-variable/noto-sans-sc@5.3.1':
     resolution: {integrity: sha512-UB96JJ17HyD5ehEU7Em0hDdh7fvTMB4B4Hzmq5c4QaNwwSLqTrdM2S+coySeBqCkXwh0DxqXT0b0wMrmzorFpQ==}
+
+  '@gsap/react@2.1.2':
+    resolution: {integrity: sha512-JqliybO1837UcgH2hVOM4VO+38APk3ECNrsuSM4MuXp+rbf+/2IG2K1YJiqfTcXQHH7XlA0m3ykniFYstfq0Iw==}
+    peerDependencies:
+      gsap: ^3.12.5
+      react: '>=17'
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -1329,6 +1381,9 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
+  gsap@3.15.0:
+    resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
+
   hookable@6.1.2:
     resolution: {integrity: sha512-+abwxtiEA52GCVIsQqut3S/uKTbUwYIp4Pe/vv+6py5XiXBCqMZHg6pA6Y5qhgLSEys0/cYuPbO0z1QFj5ZCmg==}
 
@@ -1907,6 +1962,11 @@ snapshots:
 
   '@fontsource-variable/noto-sans-sc@5.3.1': {}
 
+  '@gsap/react@2.1.2(gsap@3.15.0)(react@19.3.1)':
+    dependencies:
+      gsap: 3.15.0
+      react: 19.3.1
+
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -2475,6 +2535,8 @@ snapshots:
       resolve-pkg-maps: 1.0.0
 
   graceful-fs@4.2.11: {}
+
+  gsap@3.15.0: {}
 
   hookable@6.1.2: {}
 
