@@ -247,36 +247,48 @@ pub fn render_event(event: &GameEvent, secret_visible: bool) -> Option<RenderedE
             day,
             hunter,
             target,
-        } => Some((
-            *day,
-            "hunter",
-            Some(n(hunter.id)),
-            match target {
-                Some(t) => format!(
-                    "{}号（{}）开枪带走{}号（{}）",
-                    n(hunter.id),
-                    hunter.role.display_name(),
-                    n(t.id),
-                    t.role.display_name()
-                ),
-                None => format!(
-                    "{}号（{}）放弃开枪",
-                    n(hunter.id),
-                    hunter.role.display_name()
-                ),
-            },
-        )),
-        GameEvent::PlayerDied { day, player, cause } => Some((
-            *day,
-            "died",
-            Some(n(player.id)),
-            format!(
-                "{}号（{}）出局：{}",
-                n(player.id),
-                player.role.display_name(),
-                death_text(*cause)
-            ),
-        )),
+        } => {
+            // 猎人弃枪无声无息：公开视角（观众/Agent）不下发这条事件——
+            // 猎人身份只在真正开枪（翻牌）时公开，弃枪等于夜里普通死亡
+            if target.is_none() && !secret_visible {
+                return None;
+            }
+            Some((
+                *day,
+                "hunter",
+                Some(n(hunter.id)),
+                match target {
+                    Some(t) => format!(
+                        "{}号（{}）开枪带走{}号（{}）",
+                        n(hunter.id),
+                        hunter.role.display_name(),
+                        n(t.id),
+                        t.role.display_name()
+                    ),
+                    None => format!(
+                        "{}号（{}）放弃开枪",
+                        n(hunter.id),
+                        hunter.role.display_name()
+                    ),
+                },
+            ))
+        }
+        GameEvent::PlayerDied { day, player, cause } => {
+            // 翻牌规则：放逐/决斗败者出局亮身份；夜死与被枪带走不亮——
+            // 否则夜里死亡播报会直接暴露猎人/女巫/守卫身份
+            let flips = matches!(*cause, DeathCause::Exiled | DeathCause::Duel);
+            let role = if secret_visible || flips {
+                format!("（{}）", player.role.display_name())
+            } else {
+                String::new()
+            };
+            Some((
+                *day,
+                "died",
+                Some(n(player.id)),
+                format!("{}号{}出局：{}", n(player.id), role, death_text(*cause)),
+            ))
+        }
         GameEvent::GameOver { outcome } => Some((
             u32::MAX,
             "over",
@@ -289,12 +301,44 @@ pub fn render_event(event: &GameEvent, secret_visible: bool) -> Option<RenderedE
     }
 }
 
-/// 对局流水落终端（上帝视角，含狼聊/夜刀）：操作员在 server 控制台看完整时间线
+/// 主持人报号：与前端 hostSay 一致的流程口播，落日志补全时间线（前端有、终端也应有）
+fn host_line(event: &GameEvent) -> Option<String> {
+    /// 引擎座位号 0 起，面向人一律 1 起（与 render_event 内 n() 同规则）
+    fn n(id: PlayerId) -> PlayerId {
+        id + 1
+    }
+    match event {
+        GameEvent::NightBegan { .. } => Some("天黑请闭眼".to_string()),
+        GameEvent::Dawn { .. } => Some("天亮请睁眼".to_string()),
+        GameEvent::SpeechMade { speaker, .. } => Some(format!("请{}号玩家发言", n(*speaker))),
+        GameEvent::VoteResolved { .. } => Some("发言到此为止，请全体投票".to_string()),
+        _ => None,
+    }
+}
+
+/// 对局流水落终端（上帝视角，含狼聊/夜刀）：操作员在 server 控制台看完整时间线。
+/// 发言行补写「N号（角色）」前缀 —— 公开事件只携带座位号，上帝日志里补上身份好读；
+/// 该前缀只进日志，render_event 的返回（SSE/Agent 历史）保持不带角色，避免泄露。
 pub fn log_new_events(engine: &GameEngine, from: usize) {
     for event in engine.events().iter().skip(from) {
-        let Some((day, kind, _, text)) = render_event(event, true) else {
+        if let Some(line) = host_line(event) {
+            let (day, kind) = match event {
+                GameEvent::SpeechMade { day, .. }
+                | GameEvent::NightBegan { day }
+                | GameEvent::Dawn { day, .. }
+                | GameEvent::VoteResolved { day, .. } => (*day, "host"),
+                _ => unreachable!("host_line 有返回必有 day"),
+            };
+            tracing::info!("[对局] 第{day}天 [{kind}] 主持人：{line}");
+        }
+        let Some((day, kind, _, mut text)) = render_event(event, true) else {
             continue;
         };
+        if let GameEvent::SpeechMade { speaker, .. } = event
+            && let Some(player) = engine.players().iter().find(|p| p.id == *speaker)
+        {
+            text = format!("{}号（{}）：{}", speaker + 1, player.role.display_name(), text);
+        }
         let day_label = if day == u32::MAX {
             "终局".to_string()
         } else {

@@ -1,6 +1,7 @@
 //! mod.rs 的单元测试（由内联 mod tests 迁入）。
 
 use super::*;
+use werewolf::PlayerRole;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
@@ -390,4 +391,27 @@ async fn locate_missing_room_or_game_is_404() {
     let (status, body) = send(app, "GET", "/api/game/status?game=424242", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["data"]["message"], serde_json::Value::Null);
+}
+
+/// 猎人弃枪与夜死身份保密：公开视角（观众/Agent 历史）不得泄露身份，上帝视角保留全量
+#[test]
+fn hunter_identity_stays_secret_on_public_feed() {
+    let hunter = PlayerRole { id: 5, role: Role::Hunter };
+    let pass = GameEvent::HunterShotFired { day: 1, hunter, target: None };
+    assert!(render_event(&pass, false).is_none(), "弃枪在公开视角等于没发生");
+    let (day, kind, seat, text) = render_event(&pass, true).expect("上帝视角保留弃枪记录");
+    assert_eq!((day, kind, seat), (1, "hunter", Some(6)));
+    assert!(text.contains("猎人"), "上帝日志要带身份");
+
+    let shot = GameEvent::HunterShotFired { day: 1, hunter, target: Some(PlayerRole { id: 2, role: Role::Villager }) };
+    let (_, _, _, text) = render_event(&shot, false).expect("开枪翻牌，公开视角保留");
+    assert!(text.contains("猎人") && text.contains("平民"));
+
+    // 夜死不亮身份；放逐/决斗翻牌
+    let slain = GameEvent::PlayerDied { day: 1, player: hunter, cause: DeathCause::Slain };
+    let (_, _, _, text) = render_event(&slain, false).expect("公开视角有死讯");
+    assert!(!text.contains("猎人"), "夜死公开文案不得带角色：{text}");
+    let exiled = GameEvent::PlayerDied { day: 2, player: hunter, cause: DeathCause::Exiled };
+    let (_, _, _, text) = render_event(&exiled, false).expect("放逐公开有文案");
+    assert!(text.contains("猎人"), "放逐翻牌公开身份：{text}");
 }

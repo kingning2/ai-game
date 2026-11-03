@@ -1,6 +1,7 @@
 //! `autoplay.rs` 的单元测试：工具契约、tool_calls 解析、文本兜底解析、规则兜底。
 
 use super::*;
+use werewolf::PlayerRole;
 
 /// 标准决策上下文：3 号位狼人，存活 1-5
 fn context(kind: &'static str, role: Role) -> DecisionContext {
@@ -247,4 +248,40 @@ fn target_field_boundaries() {
     assert_eq!(parse(r#"{"target":"abc"}"#), None);
     // 缺字段 → serde default → 弃票
     assert_eq!(parse(r#"{}"#), None);
+}
+
+// ===== 夜间事件可见性（狼人不可知神职行动）=====
+
+#[test]
+fn night_actions_invisible_to_wolves_except_kill() {
+    let guard = GameEvent::NightAction {
+        day: 1,
+        actor: PlayerRole { id: 1, role: Role::Guard },
+        action: Action::GuardProtect { target: None },
+    };
+    let seer = GameEvent::NightAction {
+        day: 1,
+        actor: PlayerRole { id: 4, role: Role::Seer },
+        action: Action::SeerCheck { target: 2 },
+    };
+    let kill = GameEvent::NightAction {
+        day: 1,
+        actor: PlayerRole { id: 3, role: Role::Werewolf },
+        action: Action::WerewolfKill { target: 5 },
+    };
+    let chat = GameEvent::WolfChatSpoke {
+        day: 1,
+        speaker: PlayerRole { id: 3, role: Role::Werewolf },
+        text: "刀5".into(),
+    };
+    // 狼人视角：守卫/预言家行动不可见，狼刀与狼聊可见
+    assert!(!visible_to(&guard, true));
+    assert!(!visible_to(&seer, true));
+    assert!(visible_to(&kill, true));
+    assert!(visible_to(&chat, true));
+    // 好人视角：以上全部不可见
+    assert!(!visible_to(&guard, false));
+    assert!(!visible_to(&seer, false));
+    assert!(!visible_to(&kill, false));
+    assert!(!visible_to(&chat, false));
 }

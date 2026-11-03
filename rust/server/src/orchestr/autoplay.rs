@@ -240,11 +240,14 @@ fn collect_context(engine: &GameEngine, memory: String) -> Option<DecisionContex
     })
 }
 
-/// 事件对视角的可见性：狼人额外可见狼聊与狼刀；夜晚神职行动对决策层不可见
+/// 事件对视角的可见性：狼人额外可见狼聊与狼刀；守卫/女巫/预言家等夜间行动
+/// 对任何决策视角都不可见（对齐 snapshot.rs 的 Viewer 规则）
 fn visible_to(event: &GameEvent, is_wolf: bool) -> bool {
     match event {
         GameEvent::WolfChatSpoke { .. } | GameEvent::WolfChatPassed { .. } => is_wolf,
-        GameEvent::NightAction { .. } => is_wolf,
+        GameEvent::NightAction { action, .. } => {
+            is_wolf && matches!(action, Action::WerewolfKill { .. })
+        }
         _ => true,
     }
 }

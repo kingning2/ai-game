@@ -40,7 +40,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # 统一版本
 # - "net"：TcpListener；"macros"：#[tokio::main]/#[tokio::test]；"time"：超时/Elapsed
 # - "signal"：优雅关闭（Ctrl+C / 控制台关闭事件）
-tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-thread", "time", "signal"] }
+tokio = { version = "1", features = [
+  "macros",
+  "net",
+  "process",
+  "rt-multi-thread",
+  "time",
+  "signal",
+] }
 # 接口文档自动生成（OpenAPI 3.x JSON，供 Apifox 导入）
 utoipa = "5"
 # 平台配置目录定位
