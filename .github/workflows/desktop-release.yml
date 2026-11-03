@@ -1,0 +1,66 @@
+# 桌面端（Tauri v2）Windows 构建
+#
+# 触发：
+#   - 推 v* tag → 构建并把安装包挂到 GitHub Release
+#   - workflow_dispatch（Actions 页手动触发）→ 只上传 Actions artifact，不发 Release
+#
+# 产物：WiX .msi + NSIS .exe（tauri.conf.json bundle.targets: "all"）
+# 说明：未做代码签名，用户首次运行需信任提示；版本号以 tauri.conf.json 为准（tag 与它不必一致）
+name: desktop-release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # softprops/action-gh-release 需要
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本读根 package.json 的 packageManager（pnpm@12.14.0）
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # src-tauri 挂在 rust/ workspace 下，两个 lockfile 都参与缓存 key
+      # sherpa-onnx 首次构建下载的原生库落在 target/ 内，一并被缓存
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust
+            apps/desktop/src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # beforeBuildCommand 依次完成：release sidecar（cargo build -p server）
+      # → shared-ui/shared/web 构建 → Tauri 打包（bundle 落 rust/target/release/bundle/）
+      - name: Build desktop bundle
+        run: pnpm --filter @agent-packages/desktop exec tauri build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: |
+            */target/release/bundle/msi/*.msi
+            */target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            */target/release/bundle/msi/*.msi
+            */target/release/bundle/nsis/*.exe
