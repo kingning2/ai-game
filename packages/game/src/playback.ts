@@ -76,12 +76,7 @@ export function projectStage<TPlayer extends GamePlayer>(
   // 这条发言”时展示；狼聊不在这里——它是狼人内部交流，走 wolfChat 段并排展示，不进主发言栏
   const talk = events
     .toReversed()
-    .find(
-      (e) =>
-        e.kind === GameEventKind.Speech &&
-        e.seat !== null &&
-        !(night && e !== last),
-    );
+    .find((e) => e.kind === GameEventKind.Speech && e.seat !== null && !(night && e !== last));
   // 狼人内部交流段：前缀末尾最近一段连续 WolfChat（中间被夜行动/狼沉默打断则截断）。
   // 全段同时展示——现实中是两狼同时商议，不是逐个演讲；播放层不播这段的语音
   const wolfChat: { player: TPlayer; text: string }[] = [];
@@ -106,7 +101,9 @@ export function projectStage<TPlayer extends GamePlayer>(
   // 刀口：前缀里最近一条狼刀夜行动的 target（女巫环节报死讯用；空刀/未找到为 undefined）
   const wolfTarget = events
     .toReversed()
-    .map((e) => (e.kind === GameEventKind.NightAction ? /狼刀(\d+)号/.exec(e.text)?.[1] : undefined))
+    .map((e) =>
+      e.kind === GameEventKind.NightAction ? /狼刀(\d+)号/.exec(e.text)?.[1] : undefined,
+    )
     .find((t) => t !== undefined);
   const day = last?.day ?? 1;
   // 分母用板上座位数而非 status.total：后者来自服务端最新对局，可能与当前房间板子不一致

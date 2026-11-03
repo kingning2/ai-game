@@ -141,19 +141,23 @@ agent-packages/
 ## 三、各层职责
 
 ### 1. 基础设施层 `packages/shared`
+
 - `createFetchClient`：ApiResponse 信封自动解包、超时、故障分类（ApiError → ServerFailure）
 - `createSseStream` / WS 通道、`is.ts` 类型守卫。零 React 依赖。
 
 ### 2. 领域逻辑层 `packages/game`
+
 - `WerewolfGame` 对局基类：事件队列、按 seq 去重累积、playhead 回放、倒计时、快照订阅
 - 框架无关、传输无关——调用方拉数据后 `ingest()` 喂入，状态推进由调用方驱动
 
 ### 3. 设计系统层 `packages/shared-ui`
+
 - Apple HIG 风格组件 16 组，barrel 导出，组件受控 + 回调、零内部数据状态
 - 令牌三层：`tokens.css`（原始变量 + 语义层 `@theme inline`）→ `components.css` / `animations.css` → 组件只用语义类名
 - 约束：零硬编码色值/数值；颜色走透明度修饰符（Apple 做法）；动画只动 transform/opacity、统一 `ease-spring`、禁止 scale(0) 入场；`cn()` 拼类名
 
 ### 4. 应用层 `apps/web`
+
 - **路由**：react-router v8，`App.tsx` 集中式路由；页面间经 `location.state` 传递（发牌结果 + 房间号），刷新降级到默认板子
 - **单向数据流**：
 
@@ -168,17 +172,17 @@ apis/http.ts（唯一 fetch 实例 + 错误码镜像）
 
 ## 四、工程化选型
 
-| 维度 | 选型 |
-|---|---|
-| 包管理 | pnpm 12.14（`catalog:` 统一版本，禁止手写版本号） |
-| 任务编排 | Turborepo（`build`→`^build` 拓扑依赖 + `dist/**` 缓存） |
-| 库构建 | tsdown |
-| 应用构建 | Vite 8 / Rolldown（oxc transform，无 Babel） |
-| React | 19 + React Compiler（oxc 实现，apps/web 开启） |
-| CSS | Tailwind v4（`@theme inline` 令牌直连） |
-| 质量 | TS strict（无 `as any`）+ oxlint（type-aware）+ oxfmt，全链路 oxc |
-| 测试 | Vitest（shared-ui 配 vitest.setup.ts） |
-| 桌面端 | Tauri v2，Rust server 以 sidecar 二进制打包 |
+| 维度     | 选型                                                              |
+| -------- | ----------------------------------------------------------------- |
+| 包管理   | pnpm 12.14（`catalog:` 统一版本，禁止手写版本号）                 |
+| 任务编排 | Turborepo（`build`→`^build` 拓扑依赖 + `dist/**` 缓存）           |
+| 库构建   | tsdown                                                            |
+| 应用构建 | Vite 8 / Rolldown（oxc transform，无 Babel）                      |
+| React    | 19 + React Compiler（oxc 实现，apps/web 开启）                    |
+| CSS      | Tailwind v4（`@theme inline` 令牌直连）                           |
+| 质量     | TS strict（无 `as any`）+ oxlint（type-aware）+ oxfmt，全链路 oxc |
+| 测试     | Vitest（shared-ui 配 vitest.setup.ts）                            |
+| 桌面端   | Tauri v2，Rust server 以 sidecar 二进制打包                       |
 
 ## 五、一句话概括
 

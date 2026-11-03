@@ -11,9 +11,14 @@ import type { QueryParams } from './types';
 import { buildQuery, joinUrl } from './utils';
 
 /** http(s) → ws(s)：同源相对路径直接用 location.host */
-function toWsUrl(baseURL: string | undefined, path: string, query: QueryParams | undefined): string {
+function toWsUrl(
+  baseURL: string | undefined,
+  path: string,
+  query: QueryParams | undefined,
+): string {
   const httpUrl = joinUrl(baseURL, path) + buildQuery(query);
-  if (httpUrl.startsWith('//')) return `${location.protocol === 'https:' ? 'wss' : 'ws'}:${httpUrl}`;
+  if (httpUrl.startsWith('//'))
+    return `${location.protocol === 'https:' ? 'wss' : 'ws'}:${httpUrl}`;
   return httpUrl
     .replace(/^https:\/\//i, 'wss://')
     .replace(/^http:\/\//i, 'ws://')

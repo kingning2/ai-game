@@ -40,13 +40,13 @@
 
 ## 规则索引
 
-| 文件                                                                     | 内容                                                                      | 什么时候读      |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- | --------------- |
-| [`rules/common/project-structure.md`](rules/common/project-structure.md) | 文件放哪个文件夹、命名、barrel 导出、包间纪律（依赖红线/导出/样式所有权） | 新建任何文件前  |
-| [`rules/common/coding-style.md`](rules/common/coding-style.md)           | TS/React 编码规范、格式化、校验命令                                       | 写代码前        |
+| 文件                                                                     | 内容                                                                         | 什么时候读          |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | ------------------- |
+| [`rules/common/project-structure.md`](rules/common/project-structure.md) | 文件放哪个文件夹、命名、barrel 导出、包间纪律（依赖红线/导出/样式所有权）    | 新建任何文件前      |
+| [`rules/common/coding-style.md`](rules/common/coding-style.md)           | TS/React 编码规范、格式化、校验命令                                          | 写代码前            |
 | [`rules/common/rust-game-engine.md`](rules/common/rust-game-engine.md)   | rust/ 游戏引擎 crate 拓扑与依赖红线、GameEvent 事实源、黄金对拍、seed 确定性 | 碰 rust/ 任何代码前 |
-| [`rules/web/ui-design.md`](rules/web/ui-design.md)                       | 令牌三层、Apple HIG 用色、动效、布局、反馈面/overlay 判断力               | 做任何 UI 前    |
-| [`rules/web/component-guide.md`](rules/web/component-guide.md)           | 组件怎么用、怎么新增一个组件（全流程 checklist）                          | 使用/新增组件时 |
+| [`rules/web/ui-design.md`](rules/web/ui-design.md)                       | 令牌三层、Apple HIG 用色、动效、布局、反馈面/overlay 判断力                  | 做任何 UI 前        |
+| [`rules/web/component-guide.md`](rules/web/component-guide.md)           | 组件怎么用、怎么新增一个组件（全流程 checklist）                             | 使用/新增组件时     |
 
 ## Rust 代码规则（强制）
 

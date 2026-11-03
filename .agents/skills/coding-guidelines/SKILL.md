@@ -85,16 +85,16 @@ user-invocable: false
 
 ## Testing（强制，完整规范见 [references/testing.md](references/testing.md)）
 
-| Rule | Guideline |
-| --------------------- | -------------------------------------------------- |
-| 测试与业务分离 | 默认不内联 `#[cfg(test)] mod tests`，放独立 `tests.rs` |
-| 单元测试归属模块 | 模块目录下 `tests.rs`（`#[cfg(test)] #[path = "tests.rs"] mod tests;`） |
-| 集成测试归属 crate | crate 根 `tests/`，fixtures 放 `tests/fixtures/` |
-| 私有实现可例外 | 需要访问私有函数时才用内联测试模块，禁止为测试改 `pub` |
-| 围绕行为组织 | 按模块职责分文件，不按源文件数量机械配套，不堆一个文件 |
-| 质量 > 数量 | 覆盖正常/边界/异常/错误分支；Mock 外部依赖，禁连生产环境 |
-| Bug 修复配回归测试 | 修 Bug 必须先加能复现的回归测试，禁止删弱测试规避失败 |
-| 交付必跑 | `cargo test` 相关模块 → 全量；条件允许 `cargo fmt --check` + `cargo clippy`；报告测试命令与结果 |
+| Rule               | Guideline                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| 测试与业务分离     | 默认不内联 `#[cfg(test)] mod tests`，放独立 `tests.rs`                                          |
+| 单元测试归属模块   | 模块目录下 `tests.rs`（`#[cfg(test)] #[path = "tests.rs"] mod tests;`）                         |
+| 集成测试归属 crate | crate 根 `tests/`，fixtures 放 `tests/fixtures/`                                                |
+| 私有实现可例外     | 需要访问私有函数时才用内联测试模块，禁止为测试改 `pub`                                          |
+| 围绕行为组织       | 按模块职责分文件，不按源文件数量机械配套，不堆一个文件                                          |
+| 质量 > 数量        | 覆盖正常/边界/异常/错误分支；Mock 外部依赖，禁连生产环境                                        |
+| Bug 修复配回归测试 | 修 Bug 必须先加能复现的回归测试，禁止删弱测试规避失败                                           |
+| 交付必跑           | `cargo test` 相关模块 → 全量；条件允许 `cargo fmt --check` + `cargo clippy`；报告测试命令与结果 |
 
 ## Quick Reference
 

@@ -37,6 +37,7 @@ React 前端 (packages/game)                      Agent (rust/agent)
 ```
 
 关键事实：
+
 - **事件日志是唯一事实源**：memory/mvp/SSE/前端回放全部从 `Vec<GameEvent>` 派生；snapshot/summary 是投影 DTO。
 - **Action 只在 server 内部产生**（autoplay LLM 工具调用解析）；前端从不直接发动作 → 改 Action 爆破半径 = games/werewolf + orchestr。
 - **锁纪律**：LLM 调用在锁外（spec §7 现状已满足）；`with_engine_mut` 闭包内禁 `.await`。
@@ -44,24 +45,24 @@ React 前端 (packages/game)                      Agent (rust/agent)
 
 ## 2. 迁移映射表
 
-| 现有代码 | 去向 | 处置 |
-|---|---|---|
-| `role.rs`（Role/Camp/枚举+阵营） | **game-domain** | 原样保留（纯类型，规则不可依赖 ECS） |
-| `phase.rs`（Phase/NightStage/Outcome/DeathCause/Viewer/CheckRecord） | **game-domain** | 保留 serde wire 形状；Phase 运行时形态改为 ECS Resource，wire 仍出旧形状 |
-| `action.rs`（Action：玩家意图） | **game-domain**（=GameAction） | 保留；「意图 vs 事实」语义已正确 |
-| `board.rs`（BoardConfig+3 预设） | **game-domain** | 保留，后续 SQL 三库阶段扩为 ScriptSetup |
-| `error.rs` | **game-domain** | 原样保留 |
-| `summary.rs`（GameSummary，从日志派生） | **game-domain** | 原样保留（纯函数） |
-| `event.rs`（GameEvent：业务事实） | **game-events** | 原样保留 + seq 显式化（日志下标即 seq，行为不变）；**不是** bevy Message |
-| `snapshot.rs`（视角裁剪 + DTO） | **game-events** | 保留为显式 DTO Projection：输入 = game-ecs 构建的只读投影模型，输出 wire DTO；不序列化 World |
-| `player.rs`（PlayerState 大结构体） | **game-ecs 组件** | **拆分**：`Seat{alive,can_vote}`、`RoleOf{role}`、`PrivateChecks`、`PotionState`、`DuelUsed`、`IdiotRevealed`（单一大组件 ❌） |
-| `engine.rs`（GameEngine 状态机） | **game-ecs systems** | 按 §5 拆 System；`GameEngine` 外壳暂留为门面（见 §4 兼容策略） |
-| `Rng`（splitmix+Fisher-Yates） | **game-ecs Resource** | 原样搬移，种子语义（同 seed 同发牌）不变 |
-| `state/game_state.rs`（槽位+生命周期） | **game-runtime**（GameManager） | 生命周期语义/409/多槽位全保留；槽位值从 `Option<GameEngine>` 换成实例运行时句柄 |
-| `orchestr/autoplay` | **server 适配层**（不变位置） | 保留决策环形状：锁内收集→锁外 LLM→锁内 apply；apply 走门面 |
-| `orchestr/memory`、`mvp` | server（不变） | 零改动：只读事件日志 |
-| `db`（games/事件持久化、record） | server 侧（不变） | 零改动 |
-| SSE / seq / 前端 packages/game | 不变 | 契约冻结，测试守护 |
+| 现有代码                                                             | 去向                            | 处置                                                                                                                           |
+| -------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `role.rs`（Role/Camp/枚举+阵营）                                     | **game-domain**                 | 原样保留（纯类型，规则不可依赖 ECS）                                                                                           |
+| `phase.rs`（Phase/NightStage/Outcome/DeathCause/Viewer/CheckRecord） | **game-domain**                 | 保留 serde wire 形状；Phase 运行时形态改为 ECS Resource，wire 仍出旧形状                                                       |
+| `action.rs`（Action：玩家意图）                                      | **game-domain**（=GameAction）  | 保留；「意图 vs 事实」语义已正确                                                                                               |
+| `board.rs`（BoardConfig+3 预设）                                     | **game-domain**                 | 保留，后续 SQL 三库阶段扩为 ScriptSetup                                                                                        |
+| `error.rs`                                                           | **game-domain**                 | 原样保留                                                                                                                       |
+| `summary.rs`（GameSummary，从日志派生）                              | **game-domain**                 | 原样保留（纯函数）                                                                                                             |
+| `event.rs`（GameEvent：业务事实）                                    | **game-events**                 | 原样保留 + seq 显式化（日志下标即 seq，行为不变）；**不是** bevy Message                                                       |
+| `snapshot.rs`（视角裁剪 + DTO）                                      | **game-events**                 | 保留为显式 DTO Projection：输入 = game-ecs 构建的只读投影模型，输出 wire DTO；不序列化 World                                   |
+| `player.rs`（PlayerState 大结构体）                                  | **game-ecs 组件**               | **拆分**：`Seat{alive,can_vote}`、`RoleOf{role}`、`PrivateChecks`、`PotionState`、`DuelUsed`、`IdiotRevealed`（单一大组件 ❌） |
+| `engine.rs`（GameEngine 状态机）                                     | **game-ecs systems**            | 按 §5 拆 System；`GameEngine` 外壳暂留为门面（见 §4 兼容策略）                                                                 |
+| `Rng`（splitmix+Fisher-Yates）                                       | **game-ecs Resource**           | 原样搬移，种子语义（同 seed 同发牌）不变                                                                                       |
+| `state/game_state.rs`（槽位+生命周期）                               | **game-runtime**（GameManager） | 生命周期语义/409/多槽位全保留；槽位值从 `Option<GameEngine>` 换成实例运行时句柄                                                |
+| `orchestr/autoplay`                                                  | **server 适配层**（不变位置）   | 保留决策环形状：锁内收集→锁外 LLM→锁内 apply；apply 走门面                                                                     |
+| `orchestr/memory`、`mvp`                                             | server（不变）                  | 零改动：只读事件日志                                                                                                           |
+| `db`（games/事件持久化、record）                                     | server 侧（不变）               | 零改动                                                                                                                         |
+| SSE / seq / 前端 packages/game                                       | 不变                            | 契约冻结，测试守护                                                                                                             |
 
 **不入 ECS（明确排除）**：GameEvent 日志（保持普通 Vec，是回放/seq/持久化的事实源）、snapshot DTO、GameSummary、agent、db、tts、SSE 路由。
 
@@ -75,6 +76,7 @@ game-ecs（新）     bevy_ecs：components/resources/systems/schedules/plugins
 game-runtime（新）  实例生命周期（GameManager=原 game_state）、调度驱动 ← 依赖以上全部
 state / server / agent / db / tts / macros  依赖面不变（经由门面平稳过渡）
 ```
+
 - `bevy_ecs` 精确 pin 进根 `[workspace.dependencies]`（加 crate 前过 rust-cargo-workspace-designer 检查）。
 - 禁止循环依赖：server/agent 永不直接触碰 `bevy_ecs::World`。
 
@@ -95,6 +97,7 @@ Schedule:Voting     VotingSystem（收票）→ VotingResolutionSystem（白痴�
 Schedule:CheckWin   WinConditionSystem（屠边+偶像绑定）
 Schedule:Cleanup    夜间累计清空 / 阶段推进（PhaseTransitionSystem 独占改阶段权）
 ```
+
 - 系统**不得**各自改 Phase：阶段推进只归 `PhaseTransitionSystem`（spec §5）。
 - 当前等待窗口 = Resource（seat + kind 字符串），`pending()` 从它派生。
 - 每局独立 `World + Schedule`（GameManager 槽位），Tokio 管生命周期；实例间并行、实例内 apply 串行（沿用现有 Mutex 槽位模型平滑过渡，消息通道化作为 runtime 阶段收尾项）。
